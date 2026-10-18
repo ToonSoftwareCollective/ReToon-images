@@ -2,8 +2,9 @@
 
 The system images of ReToon, one release per version. The ReToon setup app
 ([ToonSoftwareCollective/ReToon](https://github.com/ToonSoftwareCollective/ReToon))
-downloads the one for its Toon from here and checks every file against the
-checksums that come with the app.
+always takes the latest release: it reads the file list for its Toon, then
+downloads the archive and checks every file against that list. So a new
+image reaches Toons without a new version of the app.
 
 Each release has:
 
@@ -11,8 +12,10 @@ Each release has:
   system image, boot script).
 - `retoon-toon1.tar.gz`: ReToon for the Toon 1 (kernel with ReToon's
   start-up built in, system image).
+- `files-toon2.sha256` and `files-toon1.sha256`: the files in each archive
+  with their checksums.
 
-Each archive also holds `files.sha256` and `version.txt`.
+Each archive also holds its own `files.sha256` and `version.txt`.
 
 The images are kept here and not in the app, because the app is installed
 as a whole on a Toon, and a Toon 1 has no room for both images.
