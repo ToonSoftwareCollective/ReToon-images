@@ -7,7 +7,7 @@ checksums that come with the app.
 
 Each release has:
 
-- `retoon.tar.gz`: ReToon for the Toon 2 (kernel, device tree, initrd,
+- `retoon-toon2.tar.gz`: ReToon for the Toon 2 (kernel, device tree, initrd,
   system image, boot script).
 - `retoon-toon1.tar.gz`: ReToon for the Toon 1 (kernel with ReToon's
   start-up built in, system image).
