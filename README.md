@@ -19,3 +19,8 @@ Each archive also holds its own `files.sha256` and `version.txt`.
 
 The images are kept here and not in the app, because the app is installed
 as a whole on a Toon, and a Toon 1 has no room for both images.
+
+## Documentation
+
+How to use ReToon (web interface, screen, thermostat, MQTT, apps, Z-Wave,
+Bluetooth, Zigbee and Thread, sound) is in [docs](docs/index.md).
