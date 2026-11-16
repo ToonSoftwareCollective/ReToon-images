@@ -124,10 +124,10 @@ shown. The file is watched: saving it rebuilds the screen.
 
 | Card | Notes |
 |---|---|
-| `tile` | name, state, icon, `color`, `hide_state`, our own `name_size` / `state_size` (`small`, `large`, `x-large`) and `name_color` / `state_color` (a colour name such as `red` or `#rrggbb`; Home Assistant does not use these four), `tap_action` (`toggle`, `none`, `navigate`, `perform-action` with `perform_action`, `target`, `data`; `confirmation`: `true` or `{ "text": ... }` asks "Are you sure?" first) |
-| tile features | `light-brightness`, `media-player-volume-slider`, `target-temperature`, `select-options`, `climate-hvac-modes`, `climate-preset-modes` (the first known one is used). The button rows take their list as in Home Assistant (`options`, `hvac_modes`, `preset_modes`): only those, in that order, at most 5; without it all the entity's options |
+| `tile` | name, state, icon, `color`, `hide_state`, our own `name_size` / `state_size` (`small`, `large`, `x-large`) and `name_color` / `state_color` (a colour name such as `red` or `#rrggbb`) and `on_color` (the tile's background while its entity is on; Home Assistant does not use these five), `tap_action` (`toggle`, `none`, `navigate`, `perform-action` with `perform_action`, `target`, `data`; `confirmation`: `true` or `{ "text": ... }` asks "Are you sure?" first) |
+| tile features | `light-brightness`, `media-player-volume-slider`, `cover-position` (a slider), `cover-open-close` (open, stop and close buttons), `target-temperature`, `select-options`, `climate-hvac-modes`, `climate-preset-modes` (the first known one is used). The button rows take their list as in Home Assistant (`options`, `hvac_modes`, `preset_modes`): only those, in that order, at most 5; without it all the entity's options (more than 5 heating modes: the first 4 and `off`) |
 | `heading` | `heading`, `icon`, `heading_style` |
-| `thermostat` | a dial: room and target temperature, − / +, mode buttons; `style` `compact`, `bar` or `row` for smaller cards (see above) |
+| `thermostat` | a dial: room and target temperature, − / +, buttons: a `climate-hvac-modes` or `climate-preset-modes` feature with its list as for a tile, else the entity's presets, or its modes when it has none; `style` `compact`, `bar` or `row` for smaller cards (see above) |
 | `entities` | a list with name and state per line |
 | `history-graph` | a line per entity over `hours_to_show` (default 24); one graph per unit; `name` and `color` per entity. Numbers only, on/off timelines are not drawn |
 | `statistics-graph` | Home Assistant's long-term statistics: `days_to_show` (30), `period` (`5minute`, `hour`, `day`, `week`, `month`), the first of `stat_types`, `chart_type: bar`; `change` (energy meters) is drawn as bars |

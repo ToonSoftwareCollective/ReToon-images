@@ -88,7 +88,12 @@ Assistant writes it, for anything the form does not cover.
 With "Option buttons" (a select entity), "Heating mode buttons" or "Preset
 buttons" as the extra control, the form lists what the entity can be set to:
 tick the ones that get a button (at most 5) and put them in order with the
-arrows. Nothing ticked: all of them, in the entity's order.
+arrows. Nothing ticked: all of them, in the entity's order. A large
+thermostat dial has the same choice under "Buttons under the dial".
+
+For a cover (curtains, blinds) there are "Position slider" and "Open / stop /
+close buttons". "Colour when on" gives a tile its own background colour
+while what it shows is on, open or playing.
 
 "When tapped" sets what a tap on a tile does: its usual thing (switch a
 light, press a button), nothing, or a Home Assistant action, given as
