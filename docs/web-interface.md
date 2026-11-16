@@ -203,3 +203,74 @@ curl -k -u admin:<password> -H 'Content-Type: application/x-toon' \
 Changes must be sent with `Content-Type: application/x-toon`. A form on
 another website cannot send that, so it cannot make a logged-in browser
 change the Toon.
+
+## Live values in another program
+
+A program on another computer can follow the Toon live over the same
+websocket the web interface uses: every `retoon/...` state as it changes,
+and the same commands. This works without opening the Toon's broker to the
+network, over https with the web interface's password.
+
+1. Ask for a token: `GET https://<toon>/cgi-bin/api/ws-token` with the login.
+   The answer is `{"token":"..."}`. A token works once, within a minute.
+2. Open the websocket `wss://<toon>/ws`, with the login too.
+3. Send `{"auth":"<token>"}` as the first message.
+
+From then on the Toon sends one JSON object per line. A websocket message can
+hold several lines or part of one, so collect the text and split it on
+newlines:
+
+| Line | Means |
+|---|---|
+| `{"topic":"retoon/climate","data":{...}}` | a state (the topics of [mqtt.md](mqtt.md#the-toons-own-broker)); first every current one, then each change. `data` is the JSON object, a plain string when the state is not JSON (`retoon/status`), or `null` when the state was taken away |
+| `{"topic":"retoon/notify/event","data":{...}}` | a tap on a notification, see [mqtt.md](mqtt.md#notifications-on-the-screen) |
+| `{"ready":true}` | every current state has come in |
+| `{"error":"auth"}` | the token was wrong, used or too old; the Toon closes the connection |
+| `{"error":"not allowed","topic":"..."}`, `{"error":"bad message"}` | a command was refused |
+| `{"error":"too many"}` | already 8 connections; the Toon closes this one |
+
+To send a command, send a line `{"topic":"...","payload":"..."}` with one of
+the commands of [mqtt.md](mqtt.md#the-toons-own-broker): `retoon/boiler/set`
+(for example `target 20.5`; it counts as a change from the web interface),
+`retoon/display/set`, `retoon/notify/set` (the JSON as a string) or
+`retoon/ui/set`. A command needs no answer: its result shows in the state
+that follows.
+
+An example in Python (with `pip install websockets`), which prints the room
+temperature and wakes the screen once everything has come in:
+
+```python
+import asyncio, base64, json, ssl, sys, urllib.request
+import websockets
+
+toon, password = sys.argv[1], sys.argv[2]
+login = 'Basic ' + base64.b64encode(f'admin:{password}'.encode()).decode()
+tls = ssl.create_default_context()
+tls.check_hostname = False              # the Toon's own certificate
+tls.verify_mode = ssl.CERT_NONE
+
+def token():
+    req = urllib.request.Request(f'https://{toon}/cgi-bin/api/ws-token',
+                                 headers={'Authorization': login})
+    return json.load(urllib.request.urlopen(req, context=tls))['token']
+
+async def main():
+    async with websockets.connect(f'wss://{toon}/ws', ssl=tls,
+                                  additional_headers={'Authorization': login}) as ws:
+        await ws.send(json.dumps({'auth': token()}) + '\n')
+        buf = ''
+        async for text in ws:
+            buf += text
+            while '\n' in buf:
+                line, buf = buf.split('\n', 1)
+                m = json.loads(line)
+                if m.get('ready'):
+                    await ws.send(json.dumps({'topic': 'retoon/ui/set', 'payload': 'wake'}) + '\n')
+                elif m.get('topic') == 'retoon/climate':
+                    print('temperature', m['data']['temperature'])
+
+asyncio.run(main())
+```
+
+When the connection drops (a restart of the Toon), get a new token and
+connect again; the Toon then sends every state again.

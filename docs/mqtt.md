@@ -16,6 +16,10 @@ listens on the Toon's network address, port 1883, and asks for the user name
 and password set there (`config/broker.conf`). Nothing is stored on flash:
 kept messages live in memory and are sent again after a restart.
 
+A program on another computer can also follow these topics without opening
+the broker, over the web interface's websocket: see
+[web-interface.md](web-interface.md#live-values-in-another-program).
+
 The ReToon's own programs share their state and take their commands on it
 (they also talk to each other this way):
 
