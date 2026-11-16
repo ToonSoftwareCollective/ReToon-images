@@ -66,7 +66,7 @@ client takes the place of the one before it. `config/zwave.conf` on the data
 partition holds `mode=remote` (or `local`: only for software on the Toon
 itself, which does not exist yet), `allow=<address>` and `meters=<nodes>`
 (the meter adapters that are read); without the file the daemon does not run.
-State is in `/run/toon/zwave`; the meter adapters seen are in
-`/run/toon/meters`, the readings in `/run/toon/meter` (`meter.c`: it takes
+State is in `retoon/zwave` on the Toon's own MQTT broker; the meter adapters
+seen are in `retoon/meters`, the readings in `retoon/meter` (`meter.c`: it takes
 the Serial API's ApplicationCommandHandler frames as they pass, unpacks
 CRC-16 and Multi Channel encapsulation and decodes Current Data Reports).

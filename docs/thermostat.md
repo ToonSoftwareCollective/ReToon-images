@@ -116,7 +116,8 @@ All rates above are per minute.
 Thermostat tab, Temperature sensors: the Toon's own sensor and any
 number of temperature sensors from Home Assistant or MQTT. The thermostat
 works with the average of those that answer. `toon-ui` keeps that average in
-`/run/toon/control`; when it is missing or older than three minutes (no
+`retoon/control` on the Toon's own MQTT broker; when it is missing or older
+than three minutes (no
 sensor answers, or the screen program is not running) `toon-boilerd` uses the
 Toon's own sensor, also when that one was not chosen.
 
@@ -131,7 +132,7 @@ with and without the correction.
 ## Without a boiler: an external heater or airco
 
 Boiler page, Boiler connection: "Heat and cool with an external device".
-`heat=1` / `cool=1` in `/run/toon/boiler`, `toon.heat_request` /
+`heat=1` / `cool=1` in `retoon/boiler`, `toon.heat_request` /
 `toon.cool_request` on the screen and "Heat request" / "Cool request" in Home
 Assistant follow the thermostat; an automation there can switch a heater, a
 heat pump or an airco with them. ("Heat request" is there with any boiler.)

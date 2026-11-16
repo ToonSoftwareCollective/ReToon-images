@@ -59,5 +59,6 @@ plaintext ESPHome API frames, Avahi for the announcement, a raw HCI socket on
 `hci0` for the LE scan (next to `bluetoothd`, which keeps running). Each HCI
 advertising report becomes a `BluetoothLERawAdvertisement` (address, RSSI,
 address type, raw data), batched up to 16 per message or 50 ms. State is in
-`/run/toon/esphome`. It starts from `S71toon-esphomed`, which does nothing on
+`retoon/esphome` on the Toon's own MQTT broker. It starts from
+`S71toon-esphomed`, which does nothing on
 a unit without `hci0` (the Toon 1).

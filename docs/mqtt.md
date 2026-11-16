@@ -16,24 +16,28 @@ listens on the Toon's network address, port 1883, and asks for the user name
 and password set there (`config/broker.conf`). Nothing is stored on flash:
 kept messages live in memory and are sent again after a restart.
 
-`toon-mqttd` puts the Toon's state on it and takes commands from it:
+The ReToon's own programs share their state and take their commands on it
+(they also talk to each other this way):
 
 | Topic | What |
 |---|---|
 | `retoon/climate` | room temperature, humidity, light (`toon-sensord`) |
 | `retoon/voc` | the air-quality sensor: index, word, trend (Toon 2) |
 | `retoon/boiler` | thermostat and boiler: mode, target, room, preset, heat request, the OpenTherm values (`toon-boilerd`) |
+| `retoon/opentherm` | the boiler's other OpenTherm values, `<value>\|<unit>\|<device class>\|<state class>\|<name>` |
 | `retoon/motion`, `retoon/m4` | the proximity sensor and co-processor (Toon 2) |
 | `retoon/control`, `retoon/outside` | the temperature the thermostat works with when other sensors are chosen, and the outside temperature |
 | `retoon/ui`, `retoon/zwave`, `retoon/esphome` | the state of the screen and the radios |
-| `retoon/meter` | the readings of the meter adapters that are read (Z-Wave tab), `n<node>_<what>` |
+| `retoon/meter`, `retoon/meters` | the readings of the meter adapters that are read (Z-Wave tab), `n<node>_<what>`, and the adapters seen |
 | `retoon/display` | `{"on":true,"brightness":80}` |
 | `retoon/notify/event` | a tap on a message on the screen (as `notify/action` below) |
 | `retoon/status` | `online` / `offline` |
 
-Each state topic is one JSON object with the fields of the file the daemon
-writes under `/run/toon` (numbers as numbers), retained, and sent when that
-file changes, at most every 2 seconds. Commands:
+Each state topic is one JSON object (numbers as numbers), retained, with
+`time`: when its program last stated it, in seconds since 1970. It is sent
+when something changes. The measured ones (`climate`, `boiler`, `voc`,
+`motion`, `control`, `outside`) are also sent at least every 30 seconds, so
+an old `time` there means that program stopped. Commands:
 
 | Topic | Payload |
 |---|---|
