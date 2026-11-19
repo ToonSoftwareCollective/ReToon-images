@@ -131,7 +131,8 @@ with and without the correction.
 
 ## Without a boiler: an external heater or airco
 
-Boiler page, Boiler connection: "Heat and cool with an external device".
+Installation page, Connection: "External: through Home Assistant" (or, next
+to a boiler that cannot cool, "Also cool with an external device (airco)").
 `heat=1` / `cool=1` in `retoon/boiler`, `toon.heat_request` /
 `toon.cool_request` on the screen and "Heat request" / "Cool request" in Home
 Assistant follow the thermostat; an automation there can switch a heater, a
@@ -145,6 +146,52 @@ heat pump or an airco with them. ("Heat request" is there with any boiler.)
   cooling) the cooling goes to the external device: in the cooling season
   the boiler is not asked for heat, and nothing about cooling is sent to it.
 - With an OpenTherm boiler that can cool, the setting changes nothing.
+
+## OpenTherm over WiFi (ESPHome, beta)
+
+**Beta: new, and not tested with a real boiler or heat pump yet.** Try it
+while you can keep an eye on the heating, and tell us how it works.
+
+Instead of the boiler module and its cable, the Toon can reach the boiler
+through an ESP32 or ESP8266 with an OpenTherm adapter (for example the
+DIYLESS Master OpenTherm Shield or Ihor Melnyk's adapter) at the boiler,
+running [ESPHome](https://esphome.io). The thermostat stays on the Toon; it
+talks to the ESP over WiFi, encrypted with a key of its own.
+
+1. In the web interface, Thermostat → Installation, Connection: "Wireless:
+   OpenTherm over WiFi (ESPHome)". Choose the board, the device name and the
+   two pins the adapter uses, and Use this ESP. The Toon makes the key and shows the configuration
+   for ESPHome.
+2. In ESPHome (the Home Assistant add-on or ESPHome on a computer): a new
+   device, its configuration replaced by the one from the Toon, and Install,
+   the first time over USB. The WiFi name and password come from ESPHome's
+   secrets (`wifi_ssid`, `wifi_password`).
+3. Connect the adapter to the boiler's two OpenTherm wires, where the boiler
+   module was. The Installation page then shows the ESP as connected.
+
+The configuration uses the package in
+[ReToon-esphome](https://github.com/ToonSoftwareCollective/ReToon-esphome):
+an improved version comes with the next Install in ESPHome.
+
+- The Toon sets the ESP's heating switch and water temperature every minute.
+  Five minutes without that (the Toon off, WiFi gone) and the ESP stops
+  asking for heat by itself; hot water and the boiler's own frost protection
+  keep working. At start it asks for no heat until the Toon does.
+- The boiler's values (water temperatures, pressure, modulation, flame,
+  faults, counters) come to the Toon as with the boiler module, also in
+  Home Assistant.
+- The hot water temperature and the boiler's maximum water temperature are
+  only read, not set, through the ESP: these settings live in the boiler's
+  memory, and the ESP would write them over and over.
+- A 1-wire temperature sensor (DS18B20) on the adapter, as some have: tick
+  it on the card with its pin. Its temperature comes in Home Assistant as
+  "OpenTherm module temperature". The module usually sits next to the boiler,
+  so the thermostat does not use it for the room by itself; it can be chosen
+  as a sensor like any other.
+- An ESP has no on/off contact: this is for OpenTherm boilers and heat pumps.
+- The ESP can be added to Home Assistant as well, to watch it; a change made
+  there is put back by the Toon within a minute.
+- Back to the boiler module: "Back to the boiler module" on the same card.
 
 ## Choosing the sensor from Home Assistant
 
