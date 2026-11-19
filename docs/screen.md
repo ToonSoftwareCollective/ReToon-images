@@ -86,10 +86,22 @@ each other fit in half a page, so a page can hold eight thermostats.
 
 ![Start-up picture](img/splash.png)
 
-`toon-splash` draws the name and a progress bar straight on the framebuffer.
-It is the first init script (`S00toon-splash`) and ends when `S50toon-ui`
-starts the screen, about nine seconds later. The bar moves by time, not by
-real progress. What U-Boot shows before the kernel starts is untouched.
+`toon-splash` draws the name on a dark blue backdrop and a progress bar
+straight on the framebuffer. It is the first init script (`S00toon-splash`)
+and ends when `S50toon-ui` starts the screen. The bar follows the start: it
+counts the init scripts up to `S50toon-ui` and moves on as each one runs.
+
+With "Always start ReToon" on, the Toon shows the same picture (without the
+bar) from the moment it is switched on, instead of the original software's
+picture; with it off, the original picture again (`toon-bootsplash`, run
+when the setting changes and at every start). On a Toon 2 that is a file
+`splash-custom.bmp` on the boot partition next to the original, which is
+never touched; on a Toon 1 the picture in the `splash-image` flash
+partition, with the original kept on the data partition. Right after that
+the picture comes back with an empty bar, which the splash then fills.
+While the Toon stops or restarts, the picture stays with a bar going to and
+fro. The first start after updating to 1.60 still shows the old picture at
+switch-on; it changes during that start.
 
 ## Dashboard format
 
