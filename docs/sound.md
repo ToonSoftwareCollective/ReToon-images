@@ -33,7 +33,8 @@ set in the web interface, System, Sound (stored as `volume=` in
 ## How it works
 
 **Toon 1.** The codec gets a 11.77 MHz master clock from the TOUT pin of
-the i.MX27's timer 1 (the system timer is timer 2 under ReToon) and makes the audio clocks itself with its PLL. The
+the i.MX27's timer 1 (the system timer
+is timer 2 under ReToon) and makes the audio clocks itself with its PLL. The
 SSI is fed by a FIQ handler; the audio mux connects it to the codec's pins.
 The drivers are modules (the kernel has to fit its 3 MiB flash partition);
 `S03toon-audio` loads them and routes the DAC to the speaker. `toon-sound`
