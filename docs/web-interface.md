@@ -41,7 +41,7 @@ A Save button lights up only when its card has changes.
 
 ## Pages
 
-- Left: the pages, with their name and icon.
+- Left: the pages, with their name and icon. A Toon shows up to 32 pages.
 - Middle: the cards of the selected page, in its grid as on the screen.
   Click a card to change it, or an empty cell to add a card there.
 - Right: the Toon's real screen. Clicking in it taps on the Toon.

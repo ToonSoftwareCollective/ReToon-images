@@ -147,10 +147,7 @@ heat pump or an airco with them. ("Heat request" is there with any boiler.)
   the boiler is not asked for heat, and nothing about cooling is sent to it.
 - With an OpenTherm boiler that can cool, the setting changes nothing.
 
-## OpenTherm over WiFi (ESPHome, beta)
-
-**Beta: new, and not tested with a real boiler or heat pump yet.** Try it
-while you can keep an eye on the heating, and tell us how it works.
+## OpenTherm over WiFi (ESPHome)
 
 Instead of the boiler module and its cable, the Toon can reach the boiler
 through an ESP32 or ESP8266 with an OpenTherm adapter (for example the
@@ -180,11 +177,18 @@ an improved version comes with the next Install in ESPHome.
 - The boiler's values (water temperatures, pressure, modulation, flame,
   faults, counters) come to the Toon as with the boiler module, also in
   Home Assistant.
-- The hot water temperature and the boiler's maximum water temperature are
-  only read, not set, through the ESP: these settings live in the boiler's
-  memory, and the ESP would write them over and over.
+- The hot water temperature is set through the ESP from its configuration
+  version 2 (the card says when the ESP still runs an older one): the ESP
+  writes it to the boiler only when it changes, as this setting lives in
+  memory in the boiler that wears out. The boiler's maximum water
+  temperature is only read.
+- Cooling, for a heat pump that can cool over OpenTherm, also from version 2.
+- The ESP passes a reading on when it changes, and otherwise once a minute
+  (version 2): the boiler is asked several times a second, the Toon does not
+  need every answer.
 - A 1-wire temperature sensor (DS18B20) on the adapter, as some have: tick
-  it on the card with its pin. Its temperature comes in Home Assistant as
+  it on the card with its pin. Once the ESP runs the new configuration, the
+  card shows its reading. It also comes in Home Assistant and on the screen as
   "OpenTherm module temperature". The module usually sits next to the boiler,
   so the thermostat does not use it for the room by itself; it can be chosen
   as a sensor like any other.

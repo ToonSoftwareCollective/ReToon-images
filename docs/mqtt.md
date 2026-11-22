@@ -45,7 +45,7 @@ an old `time` there means that program stopped. Commands:
 
 | Topic | Payload |
 |---|---|
-| `retoon/boiler/set` | `hvac heat`, `hvac off`, `target 20.5`, `preset comfort` (`home`, `sleep`, `away`), `program resume`, `mode ot`, `mode onoff` |
+| `retoon/boiler/set` | `hvac heat`, `hvac off`, `target 20.5`, `preset comfort` (`home`, `sleep`, `away`), `program resume`, `mode ot`, `mode onoff`, `max_flow 45` (a fixed maximum water temperature, 20–80 °C; `max_flow 0` the boiler's own again), `hot_water 60` (a fixed hot water temperature, 30–80 °C; the hot water week program goes off) |
 | `retoon/display/set` | `ON`, `OFF` or a brightness 0–100 |
 | `retoon/notify/set` | a message on the screen, as below |
 | `retoon/ui/set` | `view 2` (show page 2, counted from 0) or `wake` |
@@ -87,10 +87,11 @@ discovery_prefix=homeassistant
 | Kind | Entities |
 |---|---|
 | Sensors | room temperature (what the thermostat works with: the average of the sensors chosen for it, or the Toon's own), internal temperature (always the Toon's own sensor), outside temperature (the boiler's over OpenTherm, or the sensor chosen for it), and with an OpenTherm boiler every other value it answers (hot water temperature, burner starts and hours, pump starts and hours, fan speed, maximum power, minimum modulation, …, on `toon/<name>/opentherm/<key>`), humidity, light, air quality (a word) and the raw air-quality index |
-| Boiler (OpenTherm) | boiler water, return water, flow setpoint, hot water setpoint, maximum heating setpoint, modulation, water pressure, fault code, module message |
-| Binary sensors | boiler module link, OpenTherm link (off while the boiler or heat pump does not answer), heat request, cool request (both also without a boiler module, for an external device: see [thermostat.md](thermostat.md)), flame, boiler fault, heating active, hot water active, cooling active (the boiler's status flags) |
+| Installation (OpenTherm) | flow temperature, return water, flow setpoint, hot water setpoint, maximum heating setpoint, modulation, water pressure, fault code, connection status |
+| Binary sensors | "Installation" (the link to the boiler module or the ESP), OpenTherm link (off while the boiler or heat pump does not answer), heat request, cool request (both also without a boiler module, for an external device: see [thermostat.md](thermostat.md)), flame, installation fault, heating active, hot water active, cooling active (the boiler's status flags) |
 | Climate | "Thermostat": off / heat / auto (auto follows the week program, heat holds the temperature: the same as the calendar button on the screen), target 6–30 °C in 0.5 steps, presets, current temperature, heating / idle |
-| Select | "Boiler connection": OpenTherm, On/off; "Thermostat sensor": which of the sensors chosen in the web interface the thermostat works with: `Average` (all of them, as chosen), `Toon` (its own) or one of them by entity id (only when sensors other than the Toon's own are chosen) |
+| Select | "Connection": OpenTherm, On/off; "Thermostat sensor": which of the sensors chosen in the web interface the thermostat works with: `Average` (all of them, as chosen), `Toon` (its own) or one of them by entity id (only when sensors other than the Toon's own are chosen) |
+| Number | "Maximum flow temperature" (OpenTherm): the maximum in force now (yours, else the installation's own); setting it makes it a fixed maximum (20–80 °C), the same as Fixed on the Installation page. For a heating curve of your own in Home Assistant, by the outside temperature. It is saved with the settings when it changes, so set it now and then (every quarter of an hour, say), not every few seconds |; "Hot water temperature" (OpenTherm, a boiler with hot water): what the Toon asks for now, else the boiler's own setting; setting it makes it a fixed temperature (30–80 °C, within the boiler's limits) and switches the hot water week program off, the same as setting the temperature on the Thermostat tab without the program. For a hot water temperature by the outside temperature, for example. The boiler keeps it in memory that wears out, so change it a few times a day at most. Through an ESP (OpenTherm over WiFi) from its configuration version 2
 | Switch | "Thermostat lock": on keeps what is in force now, also over the week program's steps (the red border on the screen), off follows the week program again |
 | Light | "Display": backlight on/off and brightness |
 | Notify | "Notification": a message on the Toon's screen, see below |
@@ -138,7 +139,8 @@ data:
   payload: >-
     {"title": "Doorbell", "message": "Someone is at the door. Open?",
      "level": "alert", "icon": "mdi:doorbell",
-     "buttons": ["Open", "Ignore"], "tag": "door", "sound": "chime"}
+     "buttons": ["Open", "Ignore"], "tag": "door", "sound": "chime",
+     "camera": "camera.voordeur"}
 ```
 
 | Field | Meaning |
@@ -153,6 +155,7 @@ data:
 | `volume` | 0–100; default the volume set under System → Sound |
 | `tag` | A new message with the same tag takes the place of the old one. `{"tag": "door", "dismiss": true}` takes it away, for example when someone opened the door elsewhere |
 | `wake` | `false`: a dimmed screen stays dimmed |
+| `camera` | `"camera.voordeur"`: a snapshot of that Home Assistant camera in the message, which is then always a popup. Fetched once, fresh, over the Toon's own connection to Home Assistant when the popup opens (scaled down by Home Assistant to the popup's size), and freed when it closes. A camera that Home Assistant has no snapshots of (some only stream, like newer Google Nest cameras) shows "No picture from this camera". From an app only a camera its manifest lists under `"cameras"` |
 
 Only a `sound`, without title and message, plays the sound and shows nothing.
 

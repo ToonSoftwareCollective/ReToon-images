@@ -46,15 +46,18 @@ Z-Wave card. Tick one, and its readings become the ReToon's own values:
   (kW) or gas flow (m³/h) now;
 - on the Toon's own broker as `retoon/meter`.
 
-What each endpoint of the Toon's adapter is: 1 gas, 2 and 3 electricity in
-and out of a pulse or laser sensor (solar panels), 4 and 5 electricity in and
-out on tariff 2, 6 and 7 on tariff 1 (the P1 meter's 1.8.2, 2.8.2, 1.8.1 and
-2.8.1), 8 heat. The adapter sends a reading every 10 seconds, but only of
-what changed. With Z-Wave JS connected nothing changes for it: ReToon only
-listens. Without a client, ReToon answers the radio's frames itself so the
-readings still come. Untick the adapter once Z-Wave JS shows the readings
-itself, or Home Assistant gets them twice. An adapter added with encryption
-(S0, S2) cannot be read on the side.
+What each endpoint of the Toon's adapter is: 1 gas, 2 and 3 electricity in and
+out of a pulse or laser sensor (solar panels), 4 and 5 electricity in and out
+on tariff 2, 6 and 7 on tariff 1 (the P1 meter's 1.8.2, 2.8.2, 1.8.1 and
+2.8.1), 8 heat. The Engie version of the adapter (EN00, part number
+2000-0000-15-00) has a ninth endpoint, water, for a water meter on the
+gas/heat port; its readings are `water` (m³) and `water_flow` (m³/h). The
+adapter sends a reading every 10 seconds, but only of what changed. With
+Z-Wave JS connected nothing changes for it: ReToon only listens. Without a
+client, ReToon answers the radio's frames itself so the readings still come.
+Untick the adapter once Z-Wave JS shows the readings itself, or Home Assistant
+gets them twice. An adapter added with encryption (S0, S2) cannot be read on
+the side.
 
 ## How it works
 
