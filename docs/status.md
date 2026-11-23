@@ -15,7 +15,8 @@
   leaves a long-lived access token on the Toon.
 - Boiler module in OpenTherm and on/off mode: detection, switching, values.
 - Z-Wave for Z-Wave JS, on the Toon 2 (in use with a meter adapter) and the
-  Toon 1 (controller read out by Z-Wave JS; no devices in that network yet).
+  Toon 1 (controller read out by Z-Wave JS; a user's Toon 1 reads its meter
+  adapter, an older HAE_METER_v2, and sends the readings to Home Assistant).
 - Bluetooth proxy for Home Assistant (ESPHome native API): discovered,
   connected and listed as a scanner by Home Assistant 2026.10; it received
   the advertisements of some 30 devices in the house.

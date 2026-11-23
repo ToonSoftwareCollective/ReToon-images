@@ -49,7 +49,10 @@ Z-Wave card. Tick one, and its readings become the ReToon's own values:
 What each endpoint of the Toon's adapter is: 1 gas, 2 and 3 electricity in and
 out of a pulse or laser sensor (solar panels), 4 and 5 electricity in and out
 on tariff 2, 6 and 7 on tariff 1 (the P1 meter's 1.8.2, 2.8.2, 1.8.1 and
-2.8.1), 8 heat. The Engie version of the adapter (EN00, part number
+2.8.1), 8 heat. The older adapter (HAE_METER_v2, found with some Toon 1s) has
+no second pulse endpoint, so its electricity is one lower: 3 and 4 in and
+out on tariff 2, 5 and 6 on tariff 1. Each reading says whether it is
+electricity in or out, so ReToon gives both kinds the same names. The Engie version of the adapter (EN00, part number
 2000-0000-15-00) has a ninth endpoint, water, for a water meter on the
 gas/heat port; its readings are `water` (m³) and `water_flow` (m³/h). The
 adapter sends a reading every 10 seconds, but only of what changed. With
