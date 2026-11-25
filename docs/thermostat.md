@@ -76,8 +76,10 @@ on the Thermostat tab.
   2 °C below it, so such a boiler can still heat (and protect against frost).
 - **Starting from the original software.** Once, when nothing is learned yet,
   what the Toon's original software had learned about the house (still on
-  the data partition) is used as the starting point. A Toon that never
-  heated with it has nothing to take over.
+  the data partition) is used as the starting point: how fast the house
+  warms up and cools down. Its correction of the room temperature is not
+  taken over: ReToon measures the room in its own way and learns its own.
+  A Toon that never heated with it has nothing to take over.
 - **Starting early.** Before a step to a warmer preset:
   `minutes = (next − room − minutes_left × loss) / ((max − room) × factor) + 15`.
   The target is raised when that reaches the minutes left, at most the number
@@ -87,7 +89,8 @@ on the Thermostat tab.
   (−60 .. +120 minutes) that the next start uses. It counts as early only
   when the room is still warm at the step; there before but cooled off again
   counts as late. A start that ends without its step (the program or target
-  changed) does not count.
+  changed) does not count, nor one during which no heat could come (the
+  boiler module or ESP not answering).
 - **On/off boilers.** Heat below target − 0.2 °C, none above target + 0.2 °C.
   The boiler counts as "full" while it is on, so learning and starting early
   work the same way. Also used for OpenTherm with "Choose the boiler's water
