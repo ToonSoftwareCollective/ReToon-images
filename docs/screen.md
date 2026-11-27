@@ -84,6 +84,7 @@ in the card, "Style" in the editor):
 | `compact` | three tile rows, or the rows it is given (the ring grows with them) | a small dial: ring and knob, the room in the middle, the target between − and +; `show_name: false` leaves out icon and name ("Show the name" in the web interface) |
 | `bar` | two tile rows | icon, name and state, the room large, a slider for the target |
 | `row` | one tile row | icon, name, "Heating · 19.4 °C", the target between − and + |
+| `classic` | five tile rows, or the rows it is given | no dial: what it is doing on top, the room large, "Target 21.0°" with a flame that lights up while heating, what comes next, wide − and +, and the presets (or modes) two a row. On the Toon's own thermostat the week program button is top right |
 
 The small styles fit a tile's size (the card's place in the grid, see
 below): two `compact` dials next to each other and four `row` cards under
