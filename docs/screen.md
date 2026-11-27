@@ -20,6 +20,14 @@ was unusably slow. The native screen idles at a few percent.
 - **Dimmed:** when the screen dims, the home page can show a page of its
   own, full screen without the bar (a big clock, for example). The touch that
   wakes the screen only shows the normal home page; it presses nothing.
+- **Screen off at night** (web interface, Screen, Brightness): while the
+  thermostat is on Sleep ("Screen off while the thermostat is on Sleep"),
+  and/or between two times ("Screen off from ... until ...", for example
+  23:00 until 07:00), the screen goes fully off instead of dimming, after
+  the dim time (after half a minute when it does not dim). A touch (or an
+  approach on a Toon 2) wakes it as usual. When Sleep or the times end
+  while the screen is off, it goes to the normal dimmed brightness without
+  waking.
 - **Tiles:** a tap switches lights, switches, fans and input booleans, runs
   scenes and scripts, presses buttons and toggles media playback. Locks,
   covers and alarms are not switched by a plain tap.
