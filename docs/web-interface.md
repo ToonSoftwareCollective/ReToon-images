@@ -22,8 +22,11 @@ Six tabs:
   measures now, a notice when an update is available, and a short "Getting
   started" list until Home Assistant, the thermostat and "Always start
   ReToon" are set.
-- **Screen**: the pages (below), copying pages from Home Assistant,
-  brightness and dimming, and the standard pages.
+- **Screen**, in three parts: *Pages* (the pages, below, and copying pages
+  from Home Assistant), *Brightness* (brightness, dimming and the screen off
+  at night) and *Other* (going back to the home page, sliding the pages, the
+  buttons under the thermostat, touch calibration, trying a notification
+  and the standard pages).
 - **Thermostat**: see [thermostat.md](thermostat.md).
 - **Connections**: Home Assistant, MQTT with your own MQTT values and the Toon's own broker, Z-Wave,
   Bluetooth proxy, Zigbee or Thread, WiFi. Each card shows its state first;
