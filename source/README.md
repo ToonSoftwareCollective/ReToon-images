@@ -11,12 +11,12 @@ images as the releases in this repository, for the Toon 2 and the Toon 1.
 
 ## What you need
 
-- A Linux computer (x86_64 or aarch64) with the usual Buildroot tools:
-  `gcc`, `g++`, `make`, `patch`, `perl`, `python3`, `rsync`, `bc`, `cpio`,
-  `unzip`, `file`, `wget`, `curl`, `git`. On Debian or Ubuntu:
+- A Linux computer (x86_64 or aarch64) with the tools Buildroot and the
+  kernel need. On Debian or Ubuntu:
 
   ```sh
-  sudo apt install build-essential bc cpio unzip rsync file wget curl git python3
+  sudo apt install build-essential bc bison flex cpio file git patch perl \
+    python3 rsync unzip wget curl xz-utils libssl-dev libncurses-dev
   ```
 
 - About 25 GB free disk space per Toon model, and an internet connection
