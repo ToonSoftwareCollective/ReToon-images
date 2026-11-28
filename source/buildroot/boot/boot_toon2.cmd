@@ -1,0 +1,11 @@
+echo ================================================;
+echo  ReToon boot.scr v6  -- nothing on the panel while starting;
+echo ================================================;
+ext2load mmc 0:3 ${fdt_addr} toon2.dtb;
+ext2load mmc 0:3 ${initrd_addr} toon2-initrd.cpio.gz.u-boot;
+ext2load mmc 0:3 ${loadaddr} toon2-zImage;
+setenv bootargs 'console=ttymxc3,115200 earlycon=ec_imx6q,0x021f0000,115200 rdinit=/init quiet logo.nologo vt.global_cursor_default=0';
+echo BOOTARGS=${bootargs};
+echo calling bootz loadaddr=${loadaddr} initrd=${initrd_addr} fdt=${fdt_addr} ...;
+bootz ${loadaddr} ${initrd_addr} ${fdt_addr};
+echo !!! bootz returned unexpectedly - falling through to the original start;
