@@ -1,0 +1,133 @@
+#!/bin/sh
+# The web interface: lighttpd, https on port 443 with a certificate this Toon
+# makes for itself on the first start (kept on p4, so in no image). Port 80
+# only sends the browser on to https, unless web.conf says http=on (or there
+# is no certificate). User "admin"; the password lives on p4 too, the first
+# start makes a random one, shown on the Toon's own screen (tap the Home
+# Assistant icon) together with the certificate's fingerprint.
+DIR=/mnt/data/toon-os/config
+WEB=/usr/share/toon/web
+CERT=$DIR/web-cert.pem
+KEY=$DIR/web-key.pem
+CONF=/run/toon/lighttpd.conf
+USERS=/run/toon/web-users	# api.sh writes it again for a new password
+PID=/var/run/toon-web.pid	# the loop that starts it again
+LPID=/var/run/toon-lighttpd.pid
+KEEP=/run/toon/web.keep
+val() { sed -n "s/^$1=//p" $DIR/web.conf 2>/dev/null | tail -n 1; }
+rw() { mount -o remount,rw /mnt/data && mkdir -p $DIR && chmod 700 $DIR; }
+ro() { sync; mount -o remount,ro /mnt/data 2>/dev/null; }
+
+write_conf() {	# https: 1 or 0
+	# lighttpd does not start with a module it cannot load; without the
+	# websocket the pages ask every few seconds instead
+	WSMOD=
+	[ -e /usr/lib/lighttpd/mod_wstunnel.so ] && WSMOD=', "mod_wstunnel"'
+	cat > $CONF <<-EOF
+	server.modules = ( "mod_auth", "mod_authn_file", "mod_cgi", "mod_openssl"$WSMOD )
+	server.document-root = "$WEB"
+	server.bind = "0.0.0.0"
+	server.tag = "ReToon"
+	server.pid-file = "$LPID"
+	server.upload-dirs = ( "/tmp" )
+	server.max-request-size = 4096
+	server.errorlog-use-syslog = "enable"
+	index-file.names = ( "index.html" )
+	mimetype.assign = (
+		".html" => "text/html; charset=utf-8",
+		".js" => "text/javascript; charset=utf-8",
+		".css" => "text/css; charset=utf-8",
+		".json" => "application/json",
+		".png" => "image/png",
+		".jpg" => "image/jpeg",
+		".svg" => "image/svg+xml",
+		".ico" => "image/x-icon",
+		"" => "application/octet-stream",
+	)
+	auth.backend = "plain"
+	auth.backend.plain.userfile = "$USERS"
+	auth.require = ( "/" => ( "method" => "basic", "realm" => "ReToon", "require" => "valid-user" ) )
+	\$HTTP["url"] =^ "/cgi-bin/" { cgi.assign = ( "" => "" ) }
+	EOF
+	if [ -n "$WSMOD" ]; then
+		# the bus for the browsers: toon-bus serve (S42toon-bus); the browser
+		# shows it holds a token from GET /ws-token in its first message
+		cat >> $CONF <<-EOF
+		\$HTTP["url"] == "/ws" {
+			wstunnel.server = ( "" => ( ( "socket" => "/run/toon/bus-ws.sock" ) ) )
+			wstunnel.frame-type = "text"
+			wstunnel.ping-interval = 30
+		}
+		EOF
+	fi
+	if [ "$1" = 1 ]; then
+		cat >> $CONF <<-EOF
+		server.port = 443
+		ssl.engine = "enable"
+		ssl.pemfile = "$CERT"
+		ssl.privkey = "$KEY"
+		\$SERVER["socket"] == "0.0.0.0:80" {
+			ssl.engine = "disable"
+		EOF
+		if [ "$(val http)" != on ]; then
+			# only the page that sends the browser on to https
+			cat >> $CONF <<-EOF
+			server.document-root = "$WEB-redirect"
+			server.error-handler-404 = "/index.html"
+			auth.require = ( )
+			cgi.assign = ( )
+			EOF
+			[ -n "$WSMOD" ] && echo "wstunnel.server = ( )" >> $CONF
+		fi
+		echo "}" >> $CONF
+	else
+		echo "server.port = 80" >> $CONF
+	fi
+}
+
+case "$1" in
+  start)
+	mkdir -p /run/toon
+	pw=$(val password)
+	if [ -z "$pw" ]; then
+		pw=$(tr -dc 'a-km-z2-9' < /dev/urandom | head -c 8)
+		rw && echo "password=$pw" >> $DIR/web.conf && chmod 600 $DIR/web.conf
+		ro
+	fi
+	if [ ! -s $CERT ] || [ ! -s $KEY ]; then
+		# fixed dates: the clock may not be set yet on a first start
+		name=$(hostname)
+		rw && openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
+			-keyout $KEY.new -out $CERT.new -subj "/CN=$name.local" \
+			-addext "subjectAltName=DNS:$name.local,DNS:$name" \
+			-not_before 20250101000000Z -not_after 20491231235959Z 2>/dev/null &&
+			chmod 600 $KEY.new && mv $KEY.new $KEY && mv $CERT.new $CERT
+		ro
+	fi
+	(umask 077; echo "admin:$pw" > $USERS)
+	if [ -s $CERT ] && [ -s $KEY ]; then
+		echo "fingerprint=$(openssl x509 -in $CERT -noout -fingerprint -sha256 | sed 's/.*=//')" > /run/toon/web
+		write_conf 1
+	else
+		rm -f /run/toon/web
+		write_conf 0
+	fi
+	# started again when it stops, like the broker
+	touch $KEEP
+	start-stop-daemon -S -q -b -m -p $PID -x /bin/sh -- -c "
+		while [ -e $KEEP ]; do
+			/usr/sbin/lighttpd -D -f $CONF
+			[ -e $KEEP ] && sleep 2
+		done"
+	;;
+  stop)
+	rm -f $KEEP
+	start-stop-daemon -K -q -p $PID
+	start-stop-daemon -K -q -p $LPID
+	for i in 1 2 3 4 5 6 7 8 9 10; do [ -e $LPID ] || break; sleep 0.3; done
+	;;
+  restart)
+	$0 stop; $0 start
+	;;
+esac
+exit 0

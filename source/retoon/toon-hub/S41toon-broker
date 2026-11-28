@@ -1,0 +1,105 @@
+#!/bin/sh
+# The Toon's own MQTT broker (mosquitto). Always on 127.0.0.1:1883 without a
+# password, for the programs on the Toon (toon-mqttd, the screen, apps).
+# Open to the network only when switched on in the web interface
+# (config/broker.conf: lan=1, username=, password=), and then only with that
+# user name and password. A network listener needs the address the Toon has
+# at the time: the DHCP hook (udhcpc default.script.d) restarts the broker
+# when it changes.
+CONF=/mnt/data/toon-os/config/broker.conf
+RUN=/run/toon/mosquitto.conf
+PW=/run/toon/mosquitto.passwd
+IPS=/run/toon/broker.ips
+PIDFILE=/var/run/toon-broker.pid	# mosquitto itself
+KEEP=/var/run/toon-broker.keep		# the loop that starts it again
+
+val() { sed -n "s/^$1=//p" $CONF 2>/dev/null | tail -n 1; }
+
+# the IPv4 addresses of the network interfaces, one "interface address" a line
+lan_ips() {
+	for i in wlan0 eth0; do
+		[ -e /sys/class/net/$i ] || continue
+		a=$(ip -4 addr show $i 2>/dev/null | sed -n 's/.*inet \([0-9.]*\).*/\1/p' | head -n 1)
+		[ -n "$a" ] && echo "$i $a"
+	done
+}
+
+lan_on() {
+	[ "$(val lan)" = 1 ] && [ -n "$(val username)" ] && [ -n "$(val password)" ]
+}
+
+make_conf() {
+	mkdir -p /run/toon
+	rm -f $PW
+	{
+		echo "per_listener_settings true"
+		echo "persistence false"
+		echo "log_dest syslog"
+		echo "log_type error"
+		echo "log_type warning"
+		echo "max_queued_messages 1000"
+		echo "max_packet_size 1048576"
+		echo "listener 1883 127.0.0.1"
+		echo "allow_anonymous true"
+	} > $RUN
+	: > $IPS
+	lan_on || return 0
+	(umask 077; : > $PW)
+	mosquitto_passwd -b $PW "$(val username)" "$(val password)" || return 0
+	chown mosquitto:mosquitto $PW 2>/dev/null
+	lan_ips > $IPS
+	while read -r i a; do
+		{
+			echo "listener 1883 $a"
+			echo "allow_anonymous false"
+			echo "password_file $PW"
+		} >> $RUN
+	done < $IPS
+}
+
+# The ReToon programs talk to each other through this broker (libtoonbus),
+# so it is started again when it stops by itself.
+keep_running() {
+	while [ -f $KEEP ]; do
+		/usr/sbin/mosquitto -c $RUN &
+		pid=$!
+		echo $pid > $PIDFILE
+		# the programs send their state again by themselves; the init
+		# scripts that put one once (a radio that is off) do it here
+		( sleep 2; for s in /etc/init.d/S*; do
+			grep -q '^  bus-state)' "$s" 2>/dev/null && "$s" bus-state
+		  done ) >/dev/null 2>&1 &
+		wait $pid	# mosquitto, not the line above
+		[ -f $KEEP ] || break
+		logger -t toon-broker "mosquitto stopped, starting it again"
+		sleep 1
+	done
+}
+
+case "$1" in
+  start)
+	[ -f $KEEP ] && kill -0 "$(cat $KEEP)" 2>/dev/null && exit 0
+	make_conf
+	: > $KEEP	# before the loop looks at it
+	keep_running </dev/null >/dev/null 2>&1 &
+	echo $! > $KEEP
+	;;
+  stop)
+	rm -f $KEEP
+	[ -f $PIDFILE ] && kill "$(cat $PIDFILE)" 2>/dev/null
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		pidof mosquitto >/dev/null || break
+		usleep 300000
+	done
+	rm -f $PIDFILE
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+  check)
+	# from the DHCP hook: restart if the addresses to listen on changed
+	lan_on || exit 0
+	[ "$(lan_ips)" = "$(cat $IPS 2>/dev/null)" ] || $0 restart
+	;;
+esac
+exit 0

@@ -1,0 +1,21 @@
+config BR2_PACKAGE_TOON_M4
+	bool "toon-m4"
+	depends on BR2_PACKAGE_HOST_ARM_GNU_TOOLCHAIN_SUPPORTS
+	select BR2_PACKAGE_TOON_BUS
+	help
+	  Toon 2 Cortex-M4 sensor co-processor support: the M4 firmware
+	  (ultrasonic wake-on-approach + VOC air-quality), loaded at boot
+	  by the kernel's remoteproc (or m4load), and toon-m4d, which polls
+	  the M4's shared mailbox and publishes the VOC index
+	  (retoon/voc, toon-vocd-compatible) and motion/wake state
+	  (retoon/motion) on the Toon's own MQTT broker.
+
+	  The firmware is built from src/firmware with ARM's arm-none-eabi
+	  toolchain (Buildroot host package arm-gnu-toolchain).
+
+	  The ultrasonic detector needs gapless sampling, which only the
+	  dedicated M4 core provides; the VOC gets PWM-phase-aligned ADC
+	  samples the same way. Replaces toon-voc (do not enable both).
+
+comment "toon-m4 needs an x86_64 or aarch64 build host"
+	depends on !BR2_PACKAGE_HOST_ARM_GNU_TOOLCHAIN_SUPPORTS

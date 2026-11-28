@@ -1,0 +1,6 @@
+config BR2_PACKAGE_TOON_SOUND
+	bool "toon-sound"
+	help
+	  toon-sound: play WAV files, tones and beeps on a ReToon, the
+	  same command on both Toons (Toon 1: the audio codec through
+	  aplay; Toon 2: the buzzer driven by the Cortex-M4).

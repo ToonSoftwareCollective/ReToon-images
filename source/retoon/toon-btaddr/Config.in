@@ -1,0 +1,5 @@
+config BR2_PACKAGE_TOON_BTADDR
+	bool "toon-btaddr"
+	help
+	  Sets the Bluetooth public address of the Toon 2's BCM43430
+	  (WiFi MAC + 1) at boot, so the kernel accepts the controller.

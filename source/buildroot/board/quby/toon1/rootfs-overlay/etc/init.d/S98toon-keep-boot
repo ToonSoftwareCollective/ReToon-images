@@ -1,0 +1,38 @@
+#!/bin/sh
+# U-Boot set the next start to the original system before it started ReToon
+# (see toon-boot). Once this system is up and reachable (an address on wlan0
+# or eth0 + the SSH server), set the next start back to ReToon. Only when
+# "Always start ReToon" is on (config/autoboot, off by default): otherwise a
+# restart goes back to the original software, as on the Toon 2.
+[ "$1" = start ] || exit 0
+# U-Boot's start-up picture follows "Always start ReToon" too (in the
+# background: making the picture takes a moment)
+toon-bootsplash sync >/dev/null 2>&1 &
+# Without "Always start ReToon" the next start goes to the original software.
+# Also after installing from the original software: U-Boot's own command
+# there ("run boot_nand") would keep starting ReToon without a fallback.
+if [ ! -e /mnt/data/toon-os/config/autoboot ]; then
+	toon-boot vendor && logger -t toon-keep-boot "next boot starts the original software"
+	exit 0
+fi
+
+(
+	# Without WiFi settings the Toon waits on its WiFi screen: keep waiting.
+	limit=60
+	[ -s /mnt/data/toon-os/config/wpa_supplicant.conf ] || limit=1000000
+	i=0
+	while [ $i -lt $limit ]; do
+		if { ifconfig wlan0 2>/dev/null | grep -q 'inet addr' ||
+		     ifconfig eth0 2>/dev/null | grep -q 'inet addr'; } && pidof dropbear >/dev/null; then
+			if toon-boot retoon; then
+				logger -t toon-keep-boot "next boot starts this system"
+			else
+				logger -t toon-keep-boot "could not set the next boot"
+			fi
+			exit 0
+		fi
+		sleep 5
+		i=$((i + 1))
+	done
+	logger -t toon-keep-boot "not reachable after 5 minutes, next boot goes to the original software"
+) &

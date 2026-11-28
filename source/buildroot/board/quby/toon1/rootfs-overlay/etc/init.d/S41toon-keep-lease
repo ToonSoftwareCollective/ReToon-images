@@ -1,0 +1,14 @@
+#!/bin/sh
+# Keep the DHCP address over a reboot. busybox ifup starts udhcpc with -R,
+# which hands the address back when the network goes down; some routers then
+# give a different one at the next start, so the Toon would move with every
+# reboot. Stopping udhcpc the hard way here (this runs just before
+# "S40network stop") leaves the lease with the router.
+case "$1" in
+  stop)
+	for f in /var/run/udhcpc.*.pid; do
+		[ -f "$f" ] && kill -9 "$(cat "$f")" 2>/dev/null
+	done
+	;;
+esac
+exit 0

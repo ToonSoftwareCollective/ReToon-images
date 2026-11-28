@@ -1,0 +1,24 @@
+#!/bin/sh
+# Delete boot.scr from p1 (one-shot) to break the chainload loop, so the
+# next start is the original software's again. Use the device node directly:
+# LABEL= lookup does not work in our minimal userspace ("Can't lookup blockdev").
+# rcK calls every init script with "stop" at shutdown; only act at boot.
+[ "$1" = start ] || exit 0
+mkdir -p /mnt/boot
+mount -t vfat /dev/mmcblk3p1 /mnt/boot 2>/dev/null && {
+	rm -f /mnt/boot/boot.scr
+	sync
+	umount /mnt/boot
+}
+
+# Early marker + partial dmesg, persisted on p3 so it survives a crash/reboot.
+# A fuller dump also happens later at S99, if boot gets that far.
+mkdir -p /mnt/recovery
+mount /dev/mmcblk3p3 /mnt/recovery 2>/dev/null && {
+	LOG=/mnt/recovery/retoon-toon2-bootlog.txt
+	echo "=== toon2 buildroot boot $(date) - S00 reached ===" > "$LOG"
+	uname -a >> "$LOG" 2>&1
+	dmesg >> "$LOG" 2>&1
+	sync
+	umount /mnt/recovery
+}

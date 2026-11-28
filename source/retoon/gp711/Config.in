@@ -1,0 +1,8 @@
+config BR2_PACKAGE_GP711
+	bool "gp711"
+	help
+	  Userspace driver for the Toon 2's GreenPeak GP711 802.15.4
+	  radio: the gp711 test tool and gp711-rcpd, which exposes the
+	  radio as a Spinel RCP: on TCP port 6638 for host Zigbee stacks
+	  (zigbee2mqtt "zoh" adapter), or on a pseudo-terminal for the
+	  Thread border router (ot-br-posix).

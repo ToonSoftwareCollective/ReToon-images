@@ -1,0 +1,7 @@
+config BR2_PACKAGE_TOON_ZWAVE
+	bool "toon-zwave"
+	select BR2_PACKAGE_TOON_BUS
+	help
+	  toon-zwaved: offers the Toon 2's Z-Wave 500 controller (Serial
+	  API on ttymxc1) on TCP port 6639, for Z-Wave JS in Home
+	  Assistant ("tcp://<toon>:6639") or software on the Toon itself.

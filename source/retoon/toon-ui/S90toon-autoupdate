@@ -1,0 +1,18 @@
+#!/bin/sh
+# toon-autoupdate: updating by itself at the time config/update.conf says,
+# and the banner on the screen after such an update.
+PIDFILE=/var/run/toon-autoupdate.pid
+
+case "$1" in
+  start)
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /bin/sh -- /usr/bin/toon-autoupdate
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	rm -f $PIDFILE
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

@@ -1,0 +1,35 @@
+#!/bin/sh
+# ESPHome native API for Home Assistant (TCP port 6053, mDNS) with the
+# Bluetooth proxy. On unless config/esphome.conf on p4 says mode=off
+# (web interface, Settings). Other keys: allow=, scan=, scan_window_ms=,
+# scan_interval_ms= (see toon-esphomed.c).
+CONF=/mnt/data/toon-os/config/esphome.conf
+PIDFILE=/var/run/toon-esphomed.pid
+val() { sed -n "s/^$1=//p" $CONF 2>/dev/null | tail -n 1 | tr -d '\r'; }
+# retoon/esphome when the daemon does not run (it sends its own otherwise);
+# again after the broker restarted (S41toon-broker), which forgets it.
+# Status 1: it should run.
+off_state() {
+	if [ "$(val mode)" = off ]; then echo "state=off" | toon-bus put esphome
+	elif [ ! -e /sys/class/bluetooth/hci0 ]; then echo "state=no-bluetooth" | toon-bus put esphome
+	else return 1
+	fi
+}
+
+case "$1" in
+  start)
+	off_state && exit 0
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-esphomed
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	toon-bus put esphome </dev/null	# retoon/esphome: nothing to say
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+  bus-state)
+	off_state
+	;;
+esac
+exit 0

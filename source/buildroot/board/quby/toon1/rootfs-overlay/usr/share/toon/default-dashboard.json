@@ -1,0 +1,137 @@
+{
+  "views": [
+    {
+      "title": "Home",
+      "icon": "mdi:home",
+      "type": "sections",
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "thermostat",
+              "entity": "toon.thermostat"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "custom:toon-clock"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.temperature"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.wifi"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.flame"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.water_pressure"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.hot_water",
+              "grid_options": {
+                "columns": 12
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Heating",
+      "icon": "mdi:radiator",
+      "type": "sections",
+      "sections": [
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Boiler",
+              "icon": "mdi:water-boiler"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.boiler_connection",
+              "grid_options": {
+                "columns": 12
+              },
+              "features": [
+                {
+                  "type": "select-options"
+                }
+              ]
+            },
+            {
+              "type": "tile",
+              "entity": "toon.boiler_message",
+              "grid_options": {
+                "columns": 12
+              }
+            },
+            {
+              "type": "tile",
+              "entity": "toon.flame"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.modulation"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.boiler_fault"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.fault_code"
+            }
+          ]
+        },
+        {
+          "type": "grid",
+          "cards": [
+            {
+              "type": "heading",
+              "heading": "Water",
+              "icon": "mdi:thermometer-water"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.boiler_water"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.return_water"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.flow_setpoint"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.water_pressure"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.max_heating_setpoint"
+            },
+            {
+              "type": "tile",
+              "entity": "toon.hot_water_setpoint"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

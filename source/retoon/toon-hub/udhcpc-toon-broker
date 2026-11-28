@@ -1,0 +1,9 @@
+#!/bin/sh
+# udhcpc hook: the Toon's own broker listens on the network addresses of the
+# moment (only when that is switched on), see /etc/init.d/S41toon-broker.
+case "$1" in
+  bound|renew|deconfig)
+	(sleep 1; /etc/init.d/S41toon-broker check) >/dev/null 2>&1 &
+	;;
+esac
+exit 0

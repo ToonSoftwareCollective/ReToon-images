@@ -1,0 +1,15 @@
+config BR2_PACKAGE_LVGL
+	bool "lvgl"
+	help
+	  LVGL embedded graphics library, built as a static library
+	  with the framebuffer and evdev drivers and the Toon
+	  configuration (package/lvgl/lv_conf.h).
+
+	  https://lvgl.io
+
+config BR2_PACKAGE_LVGL_COLOR_DEPTH_16
+	bool "16 bits per pixel"
+	depends on BR2_PACKAGE_LVGL
+	help
+	  Draw in RGB565 for a 16-bit framebuffer (Toon 1). Off: 32
+	  bits per pixel (Toon 2).

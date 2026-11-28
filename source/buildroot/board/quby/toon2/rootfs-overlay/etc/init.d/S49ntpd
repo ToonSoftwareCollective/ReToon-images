@@ -1,0 +1,15 @@
+#!/bin/sh
+# Keep the clock right from the network. The kernel sets the clock from the
+# RTC chip at boot, but only when the chip has a valid time: the original
+# Toon software never sets it, so after that has run (or after a power cut)
+# the chip reports an oscillator fault and the clock starts in 1970. Once
+# ntpd has synced, the kernel writes the time back to the chip by itself.
+case "$1" in
+  start)
+	start-stop-daemon -S -q -x /usr/sbin/ntpd -- -p pool.ntp.org
+	;;
+  stop)
+	start-stop-daemon -K -q -x /usr/sbin/ntpd
+	;;
+esac
+exit 0

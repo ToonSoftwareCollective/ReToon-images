@@ -1,0 +1,158 @@
+[
+ {
+  "id": "toon.temperature",
+  "name": "Room temperature",
+  "unit": "\u00b0C",
+  "icon": "mdi:thermometer"
+ },
+ {
+  "id": "toon.internal_temperature",
+  "name": "Internal temperature",
+  "unit": "\u00b0C",
+  "icon": "mdi:thermometer"
+ },
+ {
+  "id": "toon.outside_temperature",
+  "name": "Outside temperature",
+  "unit": "\u00b0C",
+  "icon": "mdi:sun-thermometer-outline"
+ },
+ {
+  "id": "toon.humidity",
+  "name": "Humidity",
+  "unit": "%",
+  "icon": "mdi:water-percent"
+ },
+ {
+  "id": "toon.illuminance",
+  "name": "Light",
+  "unit": "lx",
+  "icon": "mdi:brightness-5"
+ },
+ {
+  "id": "toon.air_quality",
+  "name": "Air quality",
+  "unit": "",
+  "icon": "mdi:air-filter"
+ },
+ {
+  "id": "toon.boiler_water",
+  "name": "Boiler water",
+  "unit": "\u00b0C",
+  "icon": "mdi:thermometer-water"
+ },
+ {
+  "id": "toon.return_water",
+  "name": "Return water",
+  "unit": "\u00b0C",
+  "icon": "mdi:thermometer-water"
+ },
+ {
+  "id": "toon.flow_setpoint",
+  "name": "Flow setpoint",
+  "unit": "\u00b0C",
+  "icon": "mdi:thermometer-chevron-up"
+ },
+ {
+  "id": "toon.hot_water_setpoint",
+  "name": "Hot water setpoint",
+  "unit": "\u00b0C",
+  "icon": "mdi:water-thermometer"
+ },
+ {
+  "id": "toon.max_heating_setpoint",
+  "name": "Maximum heating setpoint",
+  "unit": "\u00b0C",
+  "icon": "mdi:thermometer-high"
+ },
+ {
+  "id": "toon.modulation",
+  "name": "Modulation",
+  "unit": "%",
+  "icon": "mdi:fire"
+ },
+ {
+  "id": "toon.water_pressure",
+  "name": "Water pressure",
+  "unit": "bar",
+  "icon": "mdi:gauge"
+ },
+ {
+  "id": "toon.fault_code",
+  "name": "Fault code",
+  "unit": "",
+  "icon": "mdi:alert-circle-outline"
+ },
+ {
+  "id": "toon.boiler_message",
+  "name": "Boiler module",
+  "unit": "",
+  "icon": "mdi:message-text-outline"
+ },
+ {
+  "id": "toon.flame",
+  "name": "Burner",
+  "unit": "",
+  "icon": "mdi:fire"
+ },
+ {
+  "id": "toon.heating_active",
+  "name": "Heating active",
+  "unit": "",
+  "icon": "mdi:radiator"
+ },
+ {
+  "id": "toon.hot_water_active",
+  "name": "Hot water active",
+  "unit": "",
+  "icon": "mdi:water-boiler"
+ },
+ {
+  "id": "toon.cooling_active",
+  "name": "Cooling active",
+  "unit": "",
+  "icon": "mdi:snowflake"
+ },
+ {
+  "id": "toon.heat_request",
+  "name": "Heat request",
+  "unit": "",
+  "icon": "mdi:radiator"
+ },
+ {
+  "id": "toon.cool_request",
+  "name": "Cool request",
+  "unit": "",
+  "icon": "mdi:snowflake"
+ },
+ {
+  "id": "toon.boiler_fault",
+  "name": "Boiler fault",
+  "unit": "",
+  "icon": "mdi:alert"
+ },
+ {
+  "id": "toon.thermostat",
+  "name": "Thermostat",
+  "unit": "",
+  "icon": "mdi:thermostat"
+ },
+ {
+  "id": "toon.boiler_connection",
+  "name": "Boiler connection",
+  "unit": "",
+  "icon": "mdi:connection"
+ },
+ {
+  "id": "toon.display",
+  "name": "Display brightness",
+  "unit": "",
+  "icon": "mdi:monitor"
+ },
+ {
+  "id": "toon.wifi",
+  "name": "WiFi signal",
+  "unit": "dBm",
+  "icon": "mdi:wifi"
+ }
+]

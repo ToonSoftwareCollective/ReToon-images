@@ -1,0 +1,16 @@
+auto lo
+iface lo inet loopback
+
+# the Toon's own LAN port
+auto eth0
+iface eth0 inet dhcp
+    hostname TOONHOST
+
+# WiFi (RT5370 USB stick); its settings are made on the screen and kept in
+# /mnt/data/toon-os/config/wpa_supplicant.conf
+auto wlan0
+iface wlan0 inet dhcp
+    hostname TOONHOST
+    pre-up wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant.conf -D nl80211,wext
+    post-up iw dev wlan0 set power_save off
+    post-down killall -q wpa_supplicant

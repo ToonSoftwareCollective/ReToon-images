@@ -1,0 +1,60 @@
+From: ReToon
+Subject: [PATCH] usb: chipidea: imx: hand ULPI pins over after setup
+
+The ULPI PHYs of the Toon 1 (i.MX27) can lock up when they see the bus
+before the controller is in ULPI mode. With a "ulpi" pin state in the
+device tree, hold the pins as GPIOs (STP high, data low) from the
+"default" state and switch to "ulpi" 250 ms after the controller is set
+up, as the board's original kernel did.
+---
+--- a/drivers/usb/chipidea/ci_hdrc_imx.c	2026-10-17 13:13:10.931480130 +0000
++++ b/drivers/usb/chipidea/ci_hdrc_imx.c	2026-10-17 13:13:10.933480247 +0000
+@@ -14,6 +14,8 @@
+ #include <linux/usb/of.h>
+ #include <linux/clk.h>
+ #include <linux/pinctrl/consumer.h>
++#include <linux/gpio/consumer.h>
++#include <linux/delay.h>
+ #include <linux/pm_qos.h>
+ 
+ #include "ci.h"
+@@ -500,6 +502,16 @@
+ 		goto phy_shutdown;
+ 	}
+ 
++	/*
++	 * i.MX27 with an external ULPI PHY (Toon 1): the PHY can lock up if it
++	 * sees the bus before the controller is in ULPI mode. Hold the pins as
++	 * GPIOs (STP high, data low, from the "default" pin state) and only
++	 * hand them to the controller once it is set up ("ulpi" state below),
++	 * as the board's original kernel did.
++	 */
++	if (!IS_ERR_OR_NULL(devm_gpiod_get_optional(dev, "ulpi-stp", GPIOD_OUT_HIGH)))
++		devm_gpiod_get_array_optional(dev, "ulpi-data", GPIOD_OUT_LOW);
++
+ 	data->ci_pdev = ci_hdrc_add_device(dev,
+ 				pdev->resource, pdev->num_resources,
+ 				&pdata);
+@@ -529,6 +541,22 @@
+ 		goto disable_device;
+ 	}
+ 
++	if (!(pdata.flags & CI_HDRC_IMX_IS_HSIC)) {
++		struct pinctrl *p = devm_pinctrl_get(dev);
++		struct pinctrl_state *ulpi;
++
++		if (!IS_ERR(p)) {
++			ulpi = pinctrl_lookup_state(p, "ulpi");
++			if (!IS_ERR(ulpi)) {
++				msleep(250);
++				if (pinctrl_select_state(p, ulpi))
++					dev_warn(dev, "could not hand the ULPI pins over\n");
++				else
++					dev_info(dev, "ULPI pins handed over\n");
++			}
++		}
++	}
++
+ 	if (data->supports_runtime_pm) {
+ 		pm_runtime_set_active(dev);
+ 		pm_runtime_enable(dev);

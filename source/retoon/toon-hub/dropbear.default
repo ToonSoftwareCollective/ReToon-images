@@ -1,0 +1,9 @@
+# Read by S50dropbear (which here runs without its -R): only the host keys
+# S49toon-hostkeys made and kept, so no RSA key is offered or made on demand
+# (about a minute on a Toon 1). Without any, -R, so SSH still works.
+DROPBEAR_ARGS=
+for t in ed25519 ecdsa; do
+	[ -s /etc/dropbear/dropbear_${t}_host_key ] &&
+		DROPBEAR_ARGS="$DROPBEAR_ARGS -r /etc/dropbear/dropbear_${t}_host_key"
+done
+[ -n "$DROPBEAR_ARGS" ] || DROPBEAR_ARGS=-R

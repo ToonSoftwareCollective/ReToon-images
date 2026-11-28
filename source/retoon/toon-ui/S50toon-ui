@@ -1,0 +1,31 @@
+#!/bin/sh
+# Start the screen. The framebuffer console is unbound first so
+# kernel messages do not draw over it, and bound again on stop.
+VTCON=/sys/class/vtconsole/vtcon1/bind
+PIDFILE=/var/run/toon-ui.pid
+
+case "$1" in
+  start)
+	[ -e /dev/fb0 ] || exit 0
+	[ -f /etc/profile.d/timezone.sh ] && . /etc/profile.d/timezone.sh
+	[ -e $VTCON ] && echo 0 > $VTCON
+	# the start-up picture runs its bar full and goes
+	if killall toon-splash 2>/dev/null; then sleep 0.4; fi
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-ui
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	# the start-up picture while the rest stops, not the black text console:
+	# after a restart U-Boot shows the same picture (toon-bootsplash); a
+	# start again (restart) ends it
+	if [ -e /dev/fb0 ]; then
+		/usr/bin/toon-splash --stop </dev/null >/dev/null 2>&1 &
+	else
+		[ -e $VTCON ] && echo 1 > $VTCON
+	fi
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

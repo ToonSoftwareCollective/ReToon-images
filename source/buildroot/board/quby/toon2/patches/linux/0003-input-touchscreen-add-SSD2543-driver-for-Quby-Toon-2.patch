@@ -1,0 +1,312 @@
+From: ReToon
+Subject: [PATCH] Input: add Solomon SSD2543 touchscreen driver for the Quby Toon 2
+
+No mainline driver exists for the SSD254x family. The panel setup was read
+back from the controller as it is configured on the device; bring-up order
+and report format were established by experiment on the device.
+---
+diff -uN a/drivers/input/touchscreen/Kconfig b/drivers/input/touchscreen/Kconfig
+--- a/drivers/input/touchscreen/Kconfig	2026-10-10 15:10:04.622143557 +0000
++++ b/drivers/input/touchscreen/Kconfig	2026-10-10 15:10:04.660145717 +0000
+@@ -1271,6 +1271,13 @@
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called sun4i-ts.
+ 
++config TOUCHSCREEN_SSD2543_TOON
++	tristate "Solomon SSD2543 touchscreen on the Quby Toon 2"
++	depends on I2C
++	help
++	  Say Y here for the Solomon SSD2543 capacitive touchscreen
++	  controller of the Quby Toon 2, including its panel setup.
++
+ config TOUCHSCREEN_SUR40
+ 	tristate "Samsung SUR40 (Surface 2.0/PixelSense) touchscreen"
+ 	depends on USB && MEDIA_USB_SUPPORT && HAS_DMA
+diff -uN a/drivers/input/touchscreen/Makefile b/drivers/input/touchscreen/Makefile
+--- a/drivers/input/touchscreen/Makefile	2026-10-10 15:10:04.622143557 +0000
++++ b/drivers/input/touchscreen/Makefile	2026-10-10 15:10:04.660145717 +0000
+@@ -86,6 +86,7 @@
+ obj-$(CONFIG_TOUCHSCREEN_STMFTS)	+= stmfts.o
+ obj-$(CONFIG_TOUCHSCREEN_STMPE)		+= stmpe-ts.o
+ obj-$(CONFIG_TOUCHSCREEN_SUN4I)		+= sun4i-ts.o
++obj-$(CONFIG_TOUCHSCREEN_SSD2543_TOON)	+= ssd2543_toon.o
+ obj-$(CONFIG_TOUCHSCREEN_SUR40)		+= sur40.o
+ obj-$(CONFIG_TOUCHSCREEN_SURFACE3_SPI)	+= surface3_spi.o
+ obj-$(CONFIG_TOUCHSCREEN_TI_AM335X_TSC)	+= ti_am335x_tsc.o
+diff -uN a/drivers/input/touchscreen/ssd2543_toon.c b/drivers/input/touchscreen/ssd2543_toon.c
+--- a/drivers/input/touchscreen/ssd2543_toon.c	1970-01-01 00:00:00.000000000 +0000
++++ b/drivers/input/touchscreen/ssd2543_toon.c	2026-10-10 15:10:04.660145717 +0000
+@@ -0,0 +1,273 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * Solomon SSD2543 capacitive touchscreen controller as fitted to the
++ * Quby Toon 2 (7" 1024x600 panel).
++ *
++ * There is no public datasheet. The register setup below was read back from
++ * the controller as configured on the device; the bring-up order (reset,
++ * exit sleep, configuration, scan start last) and the report format were
++ * found by experiment on the device.
++ */
++
++#include <linux/delay.h>
++#include <linux/gpio/consumer.h>
++#include <linux/i2c.h>
++#include <linux/input.h>
++#include <linux/input/mt.h>
++#include <linux/input/touchscreen.h>
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/of.h>
++
++#define SSD2543_REG_DEVICE_ID		0x02
++#define SSD2543_REG_EXIT_SLEEP		0x04
++#define SSD2543_REG_EVENT_STATUS	0x79
++#define SSD2543_REG_FINGER(n)		(0x7c + (n))
++
++#define SSD2543_DEVICE_ID		0x2543
++#define SSD2543_STATUS_FINGER(n)	BIT(4 + (n))
++#define SSD2543_MAX_FINGERS		4	/* registers 0x7c..0x7f */
++
++struct ssd2543_data {
++	struct i2c_client *client;
++	struct input_dev *input;
++	struct gpio_desc *reset_gpio;
++	struct touchscreen_properties prop;
++};
++
++struct ssd2543_reg {
++	u8 reg;
++	u16 val;
++};
++
++/* Toon 2 panel setup; scan start (0x25) has to stay last */
++static const struct ssd2543_reg ssd2543_toon2_config[] = {
++	{ 0x06, 0x190e },
++	{ 0x07, 0x00f9 },
++	{ 0x08, 0x00f8 },
++	{ 0x09, 0x00f7 },
++	{ 0x0a, 0x00f6 },
++	{ 0x0b, 0x00f5 },
++	{ 0x0c, 0x00f4 },
++	{ 0x0d, 0x00f3 },
++	{ 0x0e, 0x00f2 },
++	{ 0x0f, 0x00f1 },
++	{ 0x10, 0x00f0 },
++	{ 0x11, 0x00ef },
++	{ 0x12, 0x00ee },
++	{ 0x13, 0x00ed },
++	{ 0x14, 0x00ec },
++	{ 0x15, 0x00eb },
++	{ 0x16, 0x00ea },
++	{ 0x17, 0x00e9 },
++	{ 0x18, 0x00e8 },
++	{ 0x19, 0x00e7 },
++	{ 0x1a, 0x00e6 },
++	{ 0x1b, 0x00e5 },
++	{ 0x1c, 0x00e4 },
++	{ 0x1d, 0x00e3 },
++	{ 0x1e, 0x00e2 },
++	{ 0x1f, 0x00e1 },
++	{ 0x20, 0x00e0 },
++	{ 0x28, 0x000d },
++	{ 0x30, 0x080f },
++	{ 0x31, 0x0011 },
++	{ 0x32, 0xffe4 },
++	{ 0x33, 0x0003 },
++	{ 0x34, 0xc640 },
++	{ 0x36, 0x001a },
++	{ 0x37, 0x07c4 },
++	{ 0x3a, 0x0000 },
++	{ 0x42, 0x0050 },
++	{ 0x44, 0x0050 },
++	{ 0x56, 0x8010 },
++	{ 0x59, 0x8010 },
++	{ 0x5a, 0x8080 },
++	{ 0x5b, 0x8080 },
++	{ 0x5c, 0x8080 },
++	{ 0x66, 0x2828 },
++	{ 0x67, 0x27d0 },
++	{ 0x68, 0x0005 },
++	{ 0x69, 0x0005 },
++	{ 0x7b, 0x0003 },
++	{ 0xd7, 0x0002 },
++	{ 0xd8, 0x0007 },
++	{ 0xdb, 0x0003 },
++	{ 0x91, 0x04b1 },
++	{ 0x92, 0x0404 },
++	{ 0x9c, 0x0001 },
++	{ 0x9d, 0x0000 },
++	{ 0x25, 0x000c },
++};
++
++static int ssd2543_read(struct ssd2543_data *ts, u8 reg, u8 *buf, int len)
++{
++	struct i2c_client *client = ts->client;
++	struct i2c_msg msgs[] = {
++		{ .addr = client->addr, .len = 1, .buf = &reg },
++		{ .addr = client->addr, .flags = I2C_M_RD, .len = len, .buf = buf },
++	};
++	int ret;
++
++	ret = i2c_transfer(client->adapter, msgs, ARRAY_SIZE(msgs));
++	if (ret < 0)
++		return ret;
++
++	return ret == ARRAY_SIZE(msgs) ? 0 : -EIO;
++}
++
++static int ssd2543_write(struct ssd2543_data *ts, u8 reg, u16 val)
++{
++	u8 buf[] = { reg, val >> 8, val & 0xff };
++	int ret;
++
++	ret = i2c_master_send(ts->client, buf, sizeof(buf));
++	if (ret < 0)
++		return ret;
++
++	return ret == sizeof(buf) ? 0 : -EIO;
++}
++
++static irqreturn_t ssd2543_irq(int irq, void *dev_id)
++{
++	struct ssd2543_data *ts = dev_id;
++	u8 buf[4];
++	u16 status;
++	int i;
++
++	if (ssd2543_read(ts, SSD2543_REG_EVENT_STATUS, buf, 2))
++		return IRQ_HANDLED;
++	status = buf[0] << 8 | buf[1];
++
++	for (i = 0; i < SSD2543_MAX_FINGERS; i++) {
++		bool active = false;
++
++		/*
++		 * Finger report: A[7:0], B[7:0], A[11:8] << 4 | B[11:8],
++		 * pressure. 0xff 0xff 0xff means the slot is empty.
++		 */
++		if (status & SSD2543_STATUS_FINGER(i) &&
++		    !ssd2543_read(ts, SSD2543_REG_FINGER(i), buf, 4))
++			active = buf[0] != 0xff || buf[1] != 0xff ||
++				 buf[2] != 0xff;
++
++		input_mt_slot(ts->input, i);
++		input_mt_report_slot_state(ts->input, MT_TOOL_FINGER, active);
++		if (!active)
++			continue;
++
++		touchscreen_report_pos(ts->input, &ts->prop,
++				       buf[0] | (buf[2] & 0xf0) << 4,
++				       buf[1] | (buf[2] & 0x0f) << 8, true);
++		input_report_abs(ts->input, ABS_MT_PRESSURE, buf[3]);
++	}
++
++	input_mt_sync_frame(ts->input);
++	input_sync(ts->input);
++
++	return IRQ_HANDLED;
++}
++
++static int ssd2543_init_device(struct ssd2543_data *ts)
++{
++	u8 buf[2], cmd = SSD2543_REG_EXIT_SLEEP;
++	int i, ret;
++
++	gpiod_set_value_cansleep(ts->reset_gpio, 1);
++	msleep(50);
++	gpiod_set_value_cansleep(ts->reset_gpio, 0);
++	msleep(100);
++
++	ret = ssd2543_read(ts, SSD2543_REG_DEVICE_ID, buf, 2);
++	if (ret)
++		return ret;
++	if ((buf[0] << 8 | buf[1]) != SSD2543_DEVICE_ID)
++		return -ENODEV;
++
++	ret = i2c_master_send(ts->client, &cmd, 1);
++	if (ret < 0)
++		return ret;
++	msleep(30);
++
++	for (i = 0; i < ARRAY_SIZE(ssd2543_toon2_config); i++) {
++		ret = ssd2543_write(ts, ssd2543_toon2_config[i].reg,
++				    ssd2543_toon2_config[i].val);
++		if (ret)
++			return ret;
++	}
++	msleep(100);
++
++	return 0;
++}
++
++static int ssd2543_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct ssd2543_data *ts;
++	struct input_dev *input;
++	int ret;
++
++	ts = devm_kzalloc(dev, sizeof(*ts), GFP_KERNEL);
++	if (!ts)
++		return -ENOMEM;
++	ts->client = client;
++
++	ts->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
++	if (IS_ERR(ts->reset_gpio))
++		return dev_err_probe(dev, PTR_ERR(ts->reset_gpio),
++				     "failed to get reset gpio\n");
++
++	ret = ssd2543_init_device(ts);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to set up controller\n");
++
++	input = devm_input_allocate_device(dev);
++	if (!input)
++		return -ENOMEM;
++	ts->input = input;
++
++	input->name = "Solomon SSD2543 Touchscreen";
++	input->id.bustype = BUS_I2C;
++
++	input_set_abs_params(input, ABS_MT_POSITION_X, 0, 4095, 0, 0);
++	input_set_abs_params(input, ABS_MT_POSITION_Y, 0, 4095, 0, 0);
++	input_set_abs_params(input, ABS_MT_PRESSURE, 0, 255, 0, 0);
++	touchscreen_parse_properties(input, true, &ts->prop);
++
++	ret = input_mt_init_slots(input, SSD2543_MAX_FINGERS,
++				  INPUT_MT_DIRECT | INPUT_MT_DROP_UNUSED);
++	if (ret)
++		return ret;
++
++	ret = devm_request_threaded_irq(dev, client->irq, NULL, ssd2543_irq,
++					IRQF_ONESHOT, client->name, ts);
++	if (ret)
++		return dev_err_probe(dev, ret, "failed to request irq\n");
++
++	return input_register_device(input);
++}
++
++static const struct of_device_id ssd2543_of_match[] = {
++	{ .compatible = "quby,toon2-ssd2543", },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, ssd2543_of_match);
++
++static const struct i2c_device_id ssd2543_id[] = {
++	{ "toon2-ssd2543", 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, ssd2543_id);
++
++static struct i2c_driver ssd2543_driver = {
++	.driver = {
++		.name = "ssd2543-toon",
++		.of_match_table = ssd2543_of_match,
++	},
++	.probe = ssd2543_probe,
++	.id_table = ssd2543_id,
++};
++module_i2c_driver(ssd2543_driver);
++
++MODULE_DESCRIPTION("Solomon SSD2543 touchscreen driver (Quby Toon 2)");
++MODULE_LICENSE("GPL");

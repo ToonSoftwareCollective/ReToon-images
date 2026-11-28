@@ -1,0 +1,18 @@
+config BR2_PACKAGE_TOON_HUB
+	bool "toon-hub"
+	select BR2_PACKAGE_MOSQUITTO
+	select BR2_PACKAGE_MOSQUITTO_BROKER
+	select BR2_PACKAGE_TOON_BUS
+	help
+	  toon-sensord: room temperature (two-sensor estimate),
+	  humidity and light as retoon/climate on the Toon's own
+	  MQTT broker.
+
+	  toon-mqttd: publishes the sensors, the boiler values and the
+	  thermostat to Home Assistant over MQTT with discovery. The
+	  broker settings are read from
+	  /mnt/data/toon-os/config/mqtt.conf, which is not in the image.
+	  It reads the other programs' states from the Toon's own
+	  broker (S41toon-broker, mosquitto on 127.0.0.1, which starts
+	  itself again when it stops) and sends Home Assistant's
+	  commands there.

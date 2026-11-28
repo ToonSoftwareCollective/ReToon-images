@@ -1,0 +1,33 @@
+ubiattach: take -O (VID header offset)
+
+The -O option sits in the getopt string of ubimkvol, which does not use
+the offset, so "ubiattach -O 2048" fails with "invalid option". Move it to
+ubiattach, where vid_hdr_offset goes into the attach request.
+
+--- a/miscutils/ubi_tools.c
++++ b/miscutils/ubi_tools.c
+@@ -139,19 +139,19 @@
+ #define OPTION_a  (1 << 5)
+ #define OPTION_t  (1 << 6)
+ 	if (do_mkvol) {
+-		opts = getopt32(argv, "^" "md:+n:+N:s:a:+t:O:+" "\0" "-1",
++		opts = getopt32(argv, "^" "md:+n:+N:s:a:+t:" "\0" "-1",
+ 				&dev_num, &vol_id,
+-				&vol_name, &size_bytes_str, &alignment, &type,
+-				&vid_hdr_offset
++				&vol_name, &size_bytes_str, &alignment, &type
+ 			);
+ 	} else
+ 	if (do_update) {
+ 		opts = getopt32(argv, "^" "s:at" "\0" "-1", &size_bytes_str);
+ 		opts *= OPTION_s;
+ 	} else {
+-		opts = getopt32(argv, "^" "m:+d:+n:+N:s:a:+t:" "\0" "-1",
++		opts = getopt32(argv, "^" "m:+d:+n:+N:s:a:+t:O:+" "\0" "-1",
+ 				&mtd_num, &dev_num, &vol_id,
+-				&vol_name, &size_bytes_str, &alignment, &type
++				&vol_name, &size_bytes_str, &alignment, &type,
++				&vid_hdr_offset
+ 		);
+ 	}
+ 

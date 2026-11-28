@@ -1,0 +1,22 @@
+#!/bin/sh
+# MQTT link to Home Assistant (needs mqtt.conf on the data partition).
+PIDFILE=/var/run/toon-mqttd.pid
+
+case "$1" in
+  start)
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-mqttd
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	# it says "offline" on its way out: wait, or a restart finds it still there
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		pidof toon-mqttd >/dev/null || break
+		usleep 300000
+	done
+	rm -f $PIDFILE
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

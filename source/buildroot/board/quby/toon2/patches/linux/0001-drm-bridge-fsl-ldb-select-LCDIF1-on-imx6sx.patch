@@ -1,0 +1,42 @@
+From: ReToon
+Subject: [PATCH] drm/bridge: fsl-ldb: select LCDIF1 as LDB source on i.MX6SX
+
+The i.MX6SX LDB input is muxed between LCDIF1 and LCDIF2 via IOMUXC_GPR5
+bit 3. imx6sx.dtsi only connects LCDIF1 to the bridge, but the Toon's own
+U-Boot shows its splash on LCDIF2 and leaves the mux there, which gives a
+lit but black panel. Select LCDIF1 when the bridge is enabled.
+---
+--- a/drivers/gpu/drm/bridge/fsl-ldb.c	2026-10-10 14:52:08.055385542 +0000
++++ b/drivers/gpu/drm/bridge/fsl-ldb.c	2026-10-10 14:52:08.056385602 +0000
+@@ -17,6 +17,11 @@
+ #include <drm/drm_of.h>
+ #include <drm/drm_panel.h>
+ 
++/* i.MX6SX IOMUXC_GPR5: LDB input mux (0 = LCDIF1, 1 = LCDIF2) */
++#define IMX6SX_GPR5_OFFSET			0x14
++#define IMX6SX_GPR5_DISP_MUX_LDB_CTRL_MASK	BIT(3)
++#define IMX6SX_GPR5_DISP_MUX_LDB_CTRL_LCDIF1	0
++
+ #define LDB_CTRL_CH0_ENABLE			BIT(0)
+ #define LDB_CTRL_CH0_DI_SELECT			BIT(1)
+ #define LDB_CTRL_CH1_ENABLE			BIT(2)
+@@ -206,8 +211,18 @@
+ 
+ 	regmap_write(fsl_ldb->regmap, fsl_ldb->devdata->ldb_ctrl, reg);
+ 
+-	if (fsl_ldb->devdata->single_ctrl_reg)
++	if (fsl_ldb->devdata->single_ctrl_reg) {
++		/*
++		 * i.MX6SX: the LDB input is muxed between LCDIF1 and LCDIF2 in
++		 * IOMUXC_GPR5. imx6sx.dtsi only wires LCDIF1 to the bridge, and
++		 * a bootloader that showed a splash on LCDIF2 leaves the mux
++		 * pointing there, so select LCDIF1 explicitly.
++		 */
++		regmap_update_bits(fsl_ldb->regmap, IMX6SX_GPR5_OFFSET,
++				   IMX6SX_GPR5_DISP_MUX_LDB_CTRL_MASK,
++				   IMX6SX_GPR5_DISP_MUX_LDB_CTRL_LCDIF1);
+ 		return;
++	}
+ 
+ 	/* Program LVDS_CTRL */
+ 	reg = LVDS_CTRL_CC_ADJ(2) | LVDS_CTRL_PRE_EMPH_EN |

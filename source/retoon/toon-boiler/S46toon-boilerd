@@ -1,0 +1,31 @@
+#!/bin/sh
+# Boiler module daemon (mode switch + OpenTherm values).
+PIDFILE=/var/run/toon-boilerd.pid
+
+case "$1" in
+  start)
+	. /etc/profile.d/timezone.sh	# the week program runs on local time
+	# the boiler module's UART: ttymxc0 on the Toon 2, ttymxc1 on the Toon 1
+	dev=/dev/ttymxc0
+	grep -q "Toon 1" /proc/device-tree/model 2>/dev/null && dev=/dev/ttymxc1
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-boilerd -- -d $dev
+	;;
+  stop)
+	# wait until it is gone: while it talks to an ESP it can take a few
+	# seconds, and a restart that starts too early finds the old one still
+	# running and starts nothing
+	pid=$(cat $PIDFILE 2>/dev/null)
+	start-stop-daemon -K -q -p $PIDFILE
+	if [ -n "$pid" ]; then
+		for i in $(seq 1 40); do
+			kill -0 "$pid" 2>/dev/null || break
+			usleep 250000
+		done
+		kill -0 "$pid" 2>/dev/null && kill -9 "$pid"
+	fi
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

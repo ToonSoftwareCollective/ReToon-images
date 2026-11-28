@@ -1,0 +1,31 @@
+#!/bin/sh
+# Toon 1 audio: TLV320AIC3111 codec with its class-D speaker output (there
+# is no headphone jack). The drivers are modules (kernel size); load them,
+# then route the DAC to the speaker: DAC 0 dB and the class-D driver at its
+# full 24 dB (the small speaker is quiet; toon-sound's volume scales from
+# there). Play with
+#   aplay -D hw:0,0 file.wav
+case "$1" in
+  start)
+	for m in clk-toon1-mclk snd-soc-imx-audmux snd-soc-fsl-ssi \
+		 snd-soc-tlv320aic31xx snd-soc-simple-card; do
+		modprobe -q $m || echo "S03toon-audio: no $m" >&2
+	done
+	i=0
+	while [ ! -e /dev/snd/controlC0 ] && [ $i -lt 30 ]; do usleep 100000; i=$((i + 1)); done
+	[ -e /dev/snd/controlC0 ] || { echo "S03toon-audio: no sound card" >&2; exit 0; }
+	set_() { amixer -q -c 0 sset "$@" >/dev/null 2>&1 || echo "S03toon-audio: amixer $1 failed" >&2; }
+	set_ 'DAC Left Input' 'Left Data'
+	set_ 'DAC Right Input' 'Right Data'
+	set_ 'Output Left From Left DAC' on
+	set_ 'Output Right From Right DAC' on
+	set_ 'DAC' 0dB unmute
+	set_ 'Speaker Analog' 100% unmute
+	set_ 'Speaker Driver' 100% unmute
+	set_ 'Speaker Left' on
+	set_ 'Speaker Right' on
+	set_ 'HP Left' off
+	set_ 'HP Right' off
+	;;
+esac
+exit 0

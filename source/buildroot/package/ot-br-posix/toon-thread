@@ -1,0 +1,69 @@
+#!/bin/sh
+# The Thread border router's state. otbr-agent keeps its settings (the
+# network, frame counters, children) in RUN, in memory; they are kept on p4
+# in SAVED: every 10 minutes when they changed, and when it stops.
+#   toon-thread restore | save | keep | status | form | join <dataset hex>
+RUN=/run/toon/thread
+SAVED=/mnt/data/toon-os/thread
+SUM=/run/toon/thread.saved
+
+ctl() { ot-ctl "$@" 2>/dev/null | sed -e 's/\r$//' -e '/^Done$/d'; }
+
+case "$1" in
+  restore)
+	mkdir -p $RUN
+	chmod 700 $RUN
+	[ -d $SAVED ] && cp -a $SAVED/. $RUN/
+	cat $RUN/* 2>/dev/null | md5sum > $SUM
+	;;
+  save)
+	[ -d $RUN ] || exit 0
+	new=$(cat $RUN/* 2>/dev/null | md5sum)
+	[ "$new" = "$(cat $SUM 2>/dev/null)" ] && exit 0
+	ro=0
+	grep -q ' /mnt/data [^ ]* ro[, ]' /proc/mounts && ro=1
+	[ $ro = 0 ] || mount -o remount,rw /mnt/data || exit 1
+	rm -rf $SAVED.new
+	mkdir -p $SAVED.new && chmod 700 $SAVED.new && cp -a $RUN/. $SAVED.new/ && sync &&
+		rm -rf $SAVED && mv $SAVED.new $SAVED && echo "$new" > $SUM
+	sync
+	# not while toon-update is writing its download there
+	[ $ro = 0 ] || [ -d /run/toon/update.lock ] || mount -o remount,ro /mnt/data 2>/dev/null
+	;;
+  keep)
+	while sleep 600; do $0 save; done
+	;;
+  status)
+	# for the web interface: state, network name, channel, children
+	echo "state=$(ctl state)"
+	[ -n "$(ctl dataset active -x)" ] || exit 0
+	echo "name=$(ctl networkname)"
+	echo "channel=$(ctl channel)"
+	echo "children=$(ctl child table | grep -c '^| *[0-9]')"
+	echo "routers=$(ctl router table | grep -c '^| *[0-9]')"
+	;;
+  form)
+	# a new network of its own: ReToon-<last 4 of the id>, channel 25
+	# (above WiFi channel 13, away from Zigbee's usual 11-20)
+	id=$(sed -n 's/^id=//p' /run/toon/id 2>/dev/null)
+	ctl thread stop >/dev/null
+	ctl ifconfig down >/dev/null
+	ctl dataset init new >/dev/null
+	ctl dataset networkname "ReToon-$(echo "${id:-0000}" | tail -c 5 | tr a-z A-Z)" >/dev/null
+	ctl dataset channel 25 >/dev/null
+	ctl dataset commit active >/dev/null
+	ctl ifconfig up >/dev/null
+	ctl thread start >/dev/null
+	;;
+  join)
+	# another border router's network (Home Assistant, Google, Apple):
+	# its active operational dataset as hex TLVs
+	echo "$2" | grep -qx '[0-9a-fA-F]\{20,508\}' || { echo "not a dataset" >&2; exit 1; }
+	ctl thread stop >/dev/null
+	ctl ifconfig down >/dev/null
+	ot-ctl dataset set active "$2" 2>/dev/null | grep -qx 'Done' || { echo "the dataset was not accepted" >&2; exit 1; }
+	ctl ifconfig up >/dev/null
+	ctl thread start >/dev/null
+	;;
+esac
+exit 0

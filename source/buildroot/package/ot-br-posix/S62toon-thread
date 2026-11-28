@@ -1,0 +1,47 @@
+#!/bin/sh
+# Thread border router (otbr-agent) on the GP711 radio, when config/radio.conf
+# on p4 says mode=thread (web interface, Settings). gp711-rcpd (S60) then
+# offers the radio on /run/gp711-rcp. Home Assistant's OpenThread Border
+# Router integration uses http://<this Toon>:8081.
+CONF=/mnt/data/toon-os/config/radio.conf
+PIDFILE=/var/run/otbr-agent.pid
+KEEP=/var/run/toon-thread-keep.pid
+RADIO="spinel+hdlc+uart:///run/gp711-rcp?uart-baudrate=115200&skip-rcp-compatibility-check"
+val() { sed -n "s/^$1=//p" $CONF 2>/dev/null | tail -n 1 | tr -d '\r'; }
+
+case "$1" in
+  start)
+	[ "$(val mode)" = thread ] || exit 0
+	# route between the Thread network and the LAN: forward IPv6, and keep
+	# taking router advertisements on wlan0 (forwarding turns that off)
+	echo 2 > /proc/sys/net/ipv6/conf/wlan0/accept_ra
+	echo 1 > /proc/sys/net/ipv6/conf/all/forwarding
+	toon-thread restore
+	n=0
+	while [ ! -e /run/gp711-rcp ] && [ $n -lt 10 ]; do sleep 1; n=$((n + 1)); done
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/sbin/otbr-agent -- \
+		-I wpan0 -B wlan0 -d 5 --data-path /run/toon/thread \
+		--rest-listen-address 0.0.0.0 --vendor-name ReToon --model-name "Toon 2" "$RADIO"
+	# (a script: start-stop-daemon would take any shell for it)
+	toon-thread keep </dev/null >/dev/null 2>&1 &
+	echo $! > $KEEP
+	# no network yet: start one of its own
+	(sleep 10; ot-ctl dataset active -x 2>/dev/null | grep -q '^[0-9a-f]\{20,\}' || toon-thread form) \
+		</dev/null >/dev/null 2>&1 &
+	;;
+  stop)
+	[ -f $KEEP ] && kill "$(cat $KEEP)" 2>/dev/null
+	rm -f $KEEP
+	if start-stop-daemon -K -q -p $PIDFILE; then
+		n=0
+		while [ -d /proc/$(cat $PIDFILE) ] && [ $n -lt 10 ]; do sleep 1; n=$((n + 1)); done
+		toon-thread save
+	fi
+	rm -f $PIDFILE
+	echo 0 > /proc/sys/net/ipv6/conf/all/forwarding
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

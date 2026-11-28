@@ -1,0 +1,28 @@
+#!/bin/sh
+# The GP711 802.15.4 radio, as config/radio.conf on p4 says (web interface,
+# Settings):
+#   mode=zigbee   (default) Spinel on TCP port 6638, for zigbee2mqtt ("zoh")
+#   mode=thread   Spinel on /run/gp711-rcp, for otbr-agent (S62toon-thread)
+#   mode=off
+CONF=/mnt/data/toon-os/config/radio.conf
+PIDFILE=/var/run/gp711-rcpd.pid
+val() { sed -n "s/^$1=//p" $CONF 2>/dev/null | tail -n 1 | tr -d '\r'; }
+
+case "$1" in
+  start)
+	case "$(val mode)" in
+	off) exit 0 ;;
+	thread) set -- -t /run/gp711-rcp ;;
+	*) set -- ;;
+	esac
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/gp711-rcpd -- "$@"
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	rm -f /run/gp711-rcp
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

@@ -1,0 +1,55 @@
+#!/bin/sh
+# Toon 1: which system the next start runs, through the U-Boot environment.
+#   kernel        (0x300000): ReToon kernel with its boot manager built in
+#   kernel-backup (0x600000): the original kernel (U-Boot variable boot_nand_backup)
+# U-Boot 2010.09 has no "if", so a start of ReToon is one-shot by itself: the
+# boot command first sets the next start to the original system, saves, and only
+# then starts ReToon. A ReToon that comes up healthy sets it back
+# (S98toon-keep-boot), so one that does not falls back to the original system.
+#
+#   toon-boot retoon   next start: ReToon (with that fallback)
+#   toon-boot vendor   next start: the original system
+#   toon-boot status   print what the next start runs
+RETOON_BOOT='nand read 0xa2000000 0x300000 0x300000; bootm 0xa2000000'
+ARMED='setenv bootcmd run boot_nand_backup; saveenv; run boot_retoon'
+VENDOR='run boot_nand_backup'
+
+cur() { fw_printenv -n "$1" 2>/dev/null; }
+
+# set bootcmd to $1; also the variables that go with it
+set_next() {
+	script=/tmp/toon-boot.$$
+	: > $script
+	[ "$(cur boot_retoon)" = "$RETOON_BOOT" ] || echo "boot_retoon $RETOON_BOOT" >> $script
+	[ "$(cur bootcmd)" = "$1" ] || echo "bootcmd $1" >> $script
+	# let the original system write the environment too (to switch back here)
+	m=$(cur mtdparts_kernel)
+	case "$m" in *"(u-boot-env)ro"*) echo "mtdparts_kernel ${m%%(u-boot-env)ro*}(u-boot-env)${m#*(u-boot-env)ro}" >> $script ;; esac
+	if [ -s $script ]; then
+		fw_setenv -s $script || { rm -f $script; echo "toon-boot: cannot write the U-Boot environment" >&2; exit 1; }
+	fi
+	rm -f $script
+}
+
+case "$1" in
+retoon) set_next "$ARMED" ;;
+vendor)
+	# only with the original kernel in kernel-backup (the setup app or the
+	# first installation put it there)
+	dd if=/dev/mtd4 bs=64 count=1 2>/dev/null | grep -q 'Linux-' ||
+		{ echo "toon-boot: no original kernel in kernel-backup" >&2; exit 1; }
+	set_next "$VENDOR"
+	;;
+status)
+	case "$(cur bootcmd)" in
+	"$ARMED") echo retoon ;;
+	"$VENDOR") echo vendor ;;
+	"run boot_nand") echo "retoon (U-Boot's own command, no fallback)" ;;
+	*) echo "other: $(cur bootcmd)" ;;
+	esac
+	;;
+*)
+	echo "usage: toon-boot retoon|vendor|status" >&2
+	exit 2
+	;;
+esac

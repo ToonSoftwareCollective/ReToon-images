@@ -1,0 +1,10 @@
+config BR2_PACKAGE_R92SU
+	bool "r92su"
+	depends on BR2_LINUX_KERNEL
+	help
+	  cfg80211 (nl80211) driver for Realtek RTL8188SU/RTL8191SU/
+	  RTL8192SU USB WiFi sticks, the Toon 1's Realtek stick. Our fork
+	  of jorgecszabo/rtl8192su: built on Linux 6.12, 802.11k/v.
+	  Needs the firmware rtlwifi/rtl8712u.bin (linux-firmware).
+
+	  https://github.com/IgorYbema/rtl8192su

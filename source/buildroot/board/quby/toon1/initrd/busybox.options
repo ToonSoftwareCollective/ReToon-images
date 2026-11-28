@@ -1,0 +1,65 @@
+# The boot manager's own busybox: static (no glibc in the boot manager),
+# only what initrd/init, inittab and fstab use, plus a login on the serial
+# console for rescue. mkinitrd.sh starts from "allnoconfig" and switches
+# on each CONFIG_ name below. Its own password handling: a static glibc
+# cannot read /etc/passwd without its NSS libraries.
+STATIC
+USE_BB_PWD_GRP
+USE_BB_SHADOW
+FEATURE_SHADOWPASSWDS
+USE_BB_CRYPT
+USE_BB_CRYPT_SHA
+SHELL_ASH
+ASH
+SH_IS_ASH
+BASH_IS_NONE
+ASH_TEST
+ASH_ECHO
+ASH_PRINTF
+FEATURE_SH_MATH
+ASH_JOB_CONTROL
+FEATURE_EDITING
+FEATURE_TAB_COMPLETION
+INIT
+FEATURE_USE_INITTAB
+GETTY
+LOGIN
+MOUNT
+FEATURE_MOUNT_LOOP
+FEATURE_MOUNT_FLAGS
+FEATURE_MOUNT_FSTAB
+FEATURE_MOUNT_OTHERTAB
+UMOUNT
+FEATURE_UMOUNT_ALL
+SWAPON
+SWAPOFF
+SWITCH_ROOT
+REBOOT
+HALT
+POWEROFF
+HOSTNAME
+MKDIR
+LN
+RM
+MV
+CP
+CAT
+LS
+GREP
+ECHO
+TEST
+TEST1
+TEST2
+TRUE
+FALSE
+SLEEP
+FEATURE_FANCY_SLEEP
+FLOAT_DURATION
+DMESG
+PS
+ID
+# attaching the original UBI with the VID header offset of its EC header
+UBIATTACH
+DD
+HEXDUMP
+CUT

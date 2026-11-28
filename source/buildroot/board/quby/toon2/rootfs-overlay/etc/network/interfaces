@@ -1,0 +1,9 @@
+auto lo
+iface lo inet loopback
+
+auto wlan0
+iface wlan0 inet dhcp
+    hostname TOONHOST
+    pre-up wpa_supplicant -B -i wlan0 -c /etc/wpa_supplicant.conf -D nl80211,wext
+    post-up iw dev wlan0 set power_save off
+    post-down killall -q wpa_supplicant

@@ -1,0 +1,70 @@
+#!/bin/sh
+# Toon 2 Cortex-M4 sensor co-processor: load the firmware, then run the daemon.
+# RAM only (nothing is flashed). With the cm4 device-tree node the kernel's
+# remoteproc loads /lib/firmware/toon2-m4.elf and holds the M4 clock chain;
+# without it m4load does the same through /dev/mem.
+PIDFILE=/var/run/toon-m4d.pid
+FIRMWARE=/usr/share/toon/toon2-m4.bin
+RPROC=/sys/class/remoteproc/remoteproc0
+
+# While the device tree still gives PWM2/PWM5 to Linux, their clock gates are
+# only open while a PWM is enabled: enable both from Linux first, the M4
+# firmware then takes over the registers. Once the nodes are disabled there
+# is no pwmchip for them, the daemon sees that and tells the M4 to own them.
+hold_pwm() {	# <device> <period ns> <duty ns>
+	for c in /sys/class/pwm/pwmchip*; do
+		case "$(readlink -f $c/device)" in *$1) ;; *) continue ;; esac
+		[ -d $c/pwm0 ] || echo 0 > $c/export
+		echo $2 > $c/pwm0/period && echo $3 > $c/pwm0/duty_cycle &&
+			echo 1 > $c/pwm0/enable
+		return
+	done
+}
+
+load_m4() {
+	if [ -d $RPROC ]; then
+		[ "$(cat $RPROC/state)" = running ] && echo stop > $RPROC/state
+		echo toon2-m4.elf > $RPROC/firmware
+		echo start > $RPROC/state && [ "$(cat $RPROC/state)" = running ]
+	else
+		/usr/bin/m4load "$FIRMWARE" > /dev/null
+	fi
+}
+
+case "$1" in
+  start)
+	hold_pwm 2084000.pwm 25000 12500	# PWM2: ultrasonic 40 kHz
+	hold_pwm 22a4000.pwm 36364 6545		# PWM5: VOC heater 27.5 kHz 18 %
+	load_m4 || { echo "toon-m4: firmware load failed"; exit 1; }
+	# Motion is published only (retoon/motion, MQTT). Options, each a
+	# file in /mnt/data/toon-os/config:
+	#   m4-wake-screen  an approach un-dims the screen through toon-ui
+	#                   ("wake" on ui.cmd, as if touched)
+	#   m4-pulsed       pulsed ranging instead of continuous wave
+	#   m4-learn        touches adjust the threshold (off: fixed)
+	#   m4-no-sound     leave the buzzer to Linux (no toon-sound)
+	# (m4-cw and m4-no-wake-screen from 1.8 are the defaults now.)
+	OPTS=""
+	[ -e /mnt/data/toon-os/config/m4-wake-screen ] && OPTS="$OPTS --wake-screen"
+	[ -e /mnt/data/toon-os/config/m4-pulsed ] && OPTS="$OPTS --pulsed"
+	[ -e /mnt/data/toon-os/config/m4-learn ] && OPTS="$OPTS --learn"
+	[ -e /mnt/data/toon-os/config/m4-no-sound ] && OPTS="$OPTS --no-sound"
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-m4d -- $OPTS
+	;;
+  stop)
+	# The daemon must be gone before the M4 stops: remoteproc's stop clears
+	# ENABLE_M4, and a mailbox read after that hangs the A9 bus.
+	PID=$(cat $PIDFILE 2>/dev/null)
+	start-stop-daemon -K -q -p $PIDFILE
+	for i in 1 2 3 4 5 6 7 8 9 10; do
+		[ -n "$PID" ] && kill -0 $PID 2>/dev/null || break
+		sleep 0.5
+	done
+	[ -n "$PID" ] && kill -9 $PID 2>/dev/null
+	if [ -d $RPROC ]; then echo stop > $RPROC/state; else /usr/bin/m4load stop > /dev/null; fi
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

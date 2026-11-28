@@ -1,0 +1,35 @@
+From: ReToon
+Subject: [PATCH] wext: set the BSSID before the SSID
+
+A wext driver that starts joining when it gets the SSID (r8712u, the
+Toon 1's Realtek RTL8191SU stick) picks an AP of that SSID itself. In a
+mesh network that can be another one than wpa_supplicant selected; the
+RSN IE in the 4-way handshake then differs and the connection is broken
+off (IE_IN_4WAY_DIFFERS). Set the BSSID first, as is already done for
+cfg80211 drivers.
+
+--- a/src/drivers/driver_wext.c
++++ b/src/drivers/driver_wext.c
+@@ -2213,14 +2213,17 @@
+ 	if (params->freq.freq &&
+ 	    wpa_driver_wext_set_freq(drv, params->freq.freq) < 0)
+ 		ret = -1;
+-	if (!drv->cfg80211 &&
+-	    wpa_driver_wext_set_ssid(drv, params->ssid, params->ssid_len) < 0)
+-		ret = -1;
++	/*
++	 * The BSSID before the SSID, as for cfg80211, for every driver: one
++	 * that starts joining when it gets the SSID (r8712u) would otherwise
++	 * pick an AP of that SSID itself, in a mesh possibly another one than
++	 * the one asked for, and then the RSN IE in the 4-way handshake
++	 * differs from what was selected.
++	 */
+ 	if (params->bssid &&
+ 	    wpa_driver_wext_set_bssid(drv, params->bssid) < 0)
+ 		ret = -1;
+-	if (drv->cfg80211 &&
+-	    wpa_driver_wext_set_ssid(drv, params->ssid, params->ssid_len) < 0)
++	if (wpa_driver_wext_set_ssid(drv, params->ssid, params->ssid_len) < 0)
+ 		ret = -1;
+ 
+ 	return ret;

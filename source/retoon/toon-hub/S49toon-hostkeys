@@ -1,0 +1,49 @@
+#!/bin/sh
+# SSH host keys that stay the same across restarts (the root is in RAM): put
+# back the ones kept on the data partition before dropbear starts, or make
+# them once and keep them. Only ed25519 and ECDSA (about a second each on a
+# Toon 1): dropbear runs without -R and offers no RSA key, which takes about
+# a minute to make on a Toon 1 (see /etc/default/dropbear).
+KEEP=/mnt/data/toon-os/config/dropbear
+KEYS=/etc/dropbear
+TYPES="ed25519 ecdsa"
+
+save() {
+	[ -d /mnt/data/toon-os/config ] || return
+	ro=0
+	grep -q ' /mnt/data [^ ]* ro[,  ]' /proc/mounts && ro=1
+	[ $ro = 0 ] || mount -o remount,rw /mnt/data 2>/dev/null || return
+	mkdir -p $KEEP && chmod 700 $KEEP
+	for t in $TYPES; do
+		f=dropbear_${t}_host_key
+		[ -s $KEYS/$f ] && ! cmp -s $KEYS/$f $KEEP/$f &&
+			cp $KEYS/$f $KEEP/$f.new && chmod 600 $KEEP/$f.new && mv $KEEP/$f.new $KEEP/$f
+	done
+	sync
+	# not while toon-update is writing its download there
+	[ $ro = 0 ] || [ -d /run/toon/update.lock ] || mount -o remount,ro /mnt/data 2>/dev/null
+}
+
+case "$1" in
+  start)
+	# as S50dropbear: a real directory instead of the link into /var/run
+	[ -L $KEYS ] && rm -f $KEYS
+	mkdir -p $KEYS
+	umask 077
+	made=
+	for t in $TYPES; do
+		f=dropbear_${t}_host_key
+		if [ -s $KEEP/$f ]; then
+			cp $KEEP/$f $KEYS/$f
+		elif [ ! -s $KEYS/$f ]; then
+			dropbearkey -t $t -f $KEYS/$f >/dev/null 2>&1 && made=1
+			rm -f $KEYS/$f.pub
+		fi
+	done
+	if [ -n "$made" ]; then
+		save
+		logger -t toon-hostkeys "new SSH host keys, kept on the data partition"
+	fi
+	;;
+esac
+exit 0

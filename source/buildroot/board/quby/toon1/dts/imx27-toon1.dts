@@ -1,0 +1,643 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
+/*
+ * Toon 1 (Prodrive "ED2.0"): i.MX27, 128 MiB RAM, 128 MiB NAND,
+ * 800x480 TM070RDH11 panel with TSC2007 touch, RT5370 USB WiFi.
+ *
+ * Bring-up state: the NAND partitions are all read-only on purpose,
+ * so nothing written by the original system can be touched yet.
+ */
+
+/dts-v1/;
+#include <arm/nxp/imx/imx27.dtsi>
+#include <dt-bindings/sound/fsl-imx-audmux.h>
+
+/ {
+	model = "Quby Toon 1 (ED2.0)";
+	compatible = "quby,toon1", "fsl,imx27";
+
+	memory@a0000000 {
+		device_type = "memory";
+		reg = <0xa0000000 0x08000000>;
+	};
+
+	chosen {
+		/* U-Boot's command line is ignored (the Toon's U-Boot passes its own);
+		 * panic=10: a start that fails restarts, into the original system.
+		 * No ubi.mtd=: the boot manager attaches UBI with the VID header
+		 * offset the flash itself was formatted with (512 or 2048) */
+		bootargs = "console=ttymxc0,115200 panic=10";
+		stdout-path = &uart1;
+	};
+
+	reserved-memory {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* U-Boot's splash picture (800x480, 16 bpp): left alone, it stays
+		 * on the panel until the framebuffer driver takes over */
+		splash@a1400000 {
+			reg = <0xa1400000 0xbc000>;
+			no-map;
+		};
+	};
+
+	display0: display0 {
+		model = "TM070RDH11";
+		bits-per-pixel = <16>;
+		/* As U-Boot sets it (PCR 0xcae80086 there): TFT, colour,
+		 * FLM/LP active low, CLKPOL, SCLKIDLE, SCLKSEL; the driver adds
+		 * the colour depth and the clock divider */
+		fsl,pcr = <0xc0e80080>;
+
+		display-timings {
+			native-mode = <&timing0>;
+			timing0: timing0 {
+				clock-frequency = <20000000>;
+				hactive = <800>;
+				vactive = <480>;
+				hback-porch = <40>;
+				hfront-porch = <88>;
+				hsync-len = <48>;
+				vback-porch = <30>;
+				vfront-porch = <13>;
+				vsync-len = <3>;
+			};
+		};
+	};
+
+	backlight: backlight {
+		compatible = "pwm-backlight";
+		pwms = <&pwm 0 1000000 0>;
+		brightness-levels = <0 100>;
+		num-interpolated-steps = <100>;
+		default-brightness-level = <50>;
+	};
+
+	/* The panel's two bias rails, switched on in this order */
+	reg_lcd_min7v: regulator-lcd-min7v {
+		compatible = "regulator-fixed";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_lcd_min7v>;
+		regulator-name = "EN_MIN7V";
+		gpio = <&gpio4 25 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		startup-delay-us = <50000>;
+		regulator-boot-on;
+		/* U-Boot powers the panel; once switched off it stays white */
+		regulator-always-on;
+	};
+
+	reg_lcd: regulator-lcd {
+		compatible = "regulator-fixed";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_lcd_16v>;
+		regulator-name = "EN_16V_10V4";
+		gpio = <&gpio4 27 GPIO_ACTIVE_HIGH>;
+		enable-active-high;
+		vin-supply = <&reg_lcd_min7v>;
+		startup-delay-us = <50000>;
+		regulator-boot-on;
+		regulator-always-on;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_leds>;
+
+		led-0 {
+			label = "led0";
+			gpios = <&gpio6 17 GPIO_ACTIVE_HIGH>;
+			linux,default-trigger = "heartbeat";
+		};
+
+		led-1 {
+			label = "led1";
+			gpios = <&gpio6 7 GPIO_ACTIVE_HIGH>;
+		};
+	};
+
+	/* ULPI PHYs of the two USB ports in use */
+	usbphy_otg: usbphy-otg {
+		compatible = "usb-nop-xceiv";
+		clocks = <&clks IMX27_CLK_DUMMY>;
+		clock-names = "main_clk";
+		reset-gpios = <&gpio2 25 GPIO_ACTIVE_LOW>;	/* USB1_RESET_N */
+		#phy-cells = <0>;
+	};
+
+	usbphy_h2: usbphy-h2 {
+		compatible = "usb-nop-xceiv";
+		clocks = <&clks IMX27_CLK_DUMMY>;
+		clock-names = "main_clk";
+		#phy-cells = <0>;
+	};
+
+	/* TLV320AIC3111 on SSI1 through the audio mux (SSI3 pads). As in the
+	 * original software: 12 MHz master clock from GPT1's TOUT pin, the
+	 * codec makes bit clock and frame sync */
+	sound {
+		compatible = "simple-audio-card";
+		simple-audio-card,name = "Toon1";
+		simple-audio-card,format = "i2s";
+		simple-audio-card,bitclock-master = <&snd_codec>;
+		simple-audio-card,frame-master = <&snd_codec>;
+		simple-audio-card,widgets = "Speaker", "Speaker";
+		simple-audio-card,routing = "Speaker", "SPL", "Speaker", "SPR";
+
+		snd_cpu: simple-audio-card,cpu {
+			sound-dai = <&ssi1>;
+		};
+
+		snd_codec: simple-audio-card,codec {
+			sound-dai = <&codec>;
+			clocks = <&gpt1>;
+		};
+	};
+};
+
+&uart1 {	/* console, ttymxc0 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+
+&uart2 {	/* boiler module, ttymxc1 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+
+&uart3 {	/* Z-Wave, ttymxc2 */
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	status = "okay";
+};
+
+&ssi1 {
+	clocks = <&clks IMX27_CLK_SSI1_IPG_GATE>, <&clks IMX27_CLK_SSI1_BAUD_GATE>;
+	clock-names = "ipg", "baud";
+	/* DMA does not start on this SSI (TX FIFO stays empty); feed it from
+	 * a FIQ handler like the original i.MX27 audio code */
+	fsl,fiq-stream-filter;
+	status = "okay";
+};
+
+/* GPT1 is the codec's clock (TOUT); the system timer is GPT2 then */
+&gpt1 {
+	compatible = "quby,toon1-gpt-mclk";
+	#clock-cells = <0>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_tout>;
+};
+
+&audmux {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_audmux>;
+	status = "okay";
+
+	/* SSI1: clock, frame sync and data from the codec pins (the values
+	 * the original software wrote) */
+	ssi1-port {
+		fsl,audmux-port = <MX27_AUDMUX_HPCR1_SSI0>;
+		fsl,port-config = <(IMX_AUDMUX_V1_PCR_TFSDIR |
+				    IMX_AUDMUX_V1_PCR_TCLKDIR |
+				    IMX_AUDMUX_V1_PCR_TFCSEL(MX27_AUDMUX_PPCR3_SSI_PINS_3) |
+				    IMX_AUDMUX_V1_PCR_RFSDIR |
+				    IMX_AUDMUX_V1_PCR_RCLKDIR |
+				    IMX_AUDMUX_V1_PCR_RFCSEL(MX27_AUDMUX_PPCR3_SSI_PINS_3) |
+				    IMX_AUDMUX_V1_PCR_RXDSEL(MX27_AUDMUX_PPCR3_SSI_PINS_3) |
+				    IMX_AUDMUX_V1_PCR_SYN)>;
+	};
+
+	/* SSI3 pads to the codec: data from SSI1 */
+	codec-port {
+		fsl,audmux-port = <MX27_AUDMUX_PPCR3_SSI_PINS_3>;
+		fsl,port-config = <IMX_AUDMUX_V1_PCR_SYN>;
+	};
+};
+
+&fec {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_fec>;
+	phy-mode = "mii";
+	phy-reset-gpios = <&gpio1 25 GPIO_ACTIVE_LOW>;	/* ETH_RST_N */
+	status = "okay";
+};
+
+&i2c1 {
+	clock-frequency = <400000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+
+	temperature-sensor@48 {
+		compatible = "adi,adt7410";
+		reg = <0x48>;
+	};
+
+	temperature-sensor@49 {
+		compatible = "adi,adt7410";
+		reg = <0x49>;
+	};
+
+	temperature-sensor@4c {
+		compatible = "ti,tmp431";
+		reg = <0x4c>;
+	};
+};
+
+&i2c2 {
+	clock-frequency = <400000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	codec: audio-codec@18 {
+		compatible = "ti,tlv320aic3111";
+		reg = <0x18>;
+		#sound-dai-cells = <0>;
+	};
+
+	touchscreen@48 {
+		compatible = "ti,tsc2007";
+		reg = <0x48>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_touch>;
+		interrupt-parent = <&gpio6>;
+		interrupts = <20 IRQ_TYPE_EDGE_FALLING>;
+		gpios = <&gpio6 20 GPIO_ACTIVE_LOW>;
+		ti,x-plate-ohms = <780>;
+	};
+
+	rtc@6f {
+		compatible = "isil,isl1208";
+		reg = <0x6f>;
+	};
+};
+
+&pwm {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_pwm>;
+	status = "okay";
+};
+
+&fb {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_lcd>;
+	display = <&display0>;
+	lcd-supply = <&reg_lcd>;
+	fsl,dmacr = <0x00020010>;
+	fsl,lscr1 = <0x400c0373>;	/* as U-Boot */
+	/* margins and sync lengths as U-Boot set them for the fitted panel
+	 * (TM070RDH11 or TDA-WVGA0700F00048, see the imxfb patch) */
+	fsl,keep-bootloader-timing;
+	status = "okay";
+};
+
+&usbotg {	/* the external USB port */
+	/* held as GPIOs until the controller is in ULPI mode, like host 2;
+	 * the PHY switches the port's 5 V */
+	pinctrl-names = "default", "ulpi";
+	pinctrl-0 = <&pinctrl_usbotg_hold>;
+	pinctrl-1 = <&pinctrl_usbotg>;
+	ulpi-stp-gpios = <&gpio5 1 GPIO_ACTIVE_HIGH>;
+	ulpi-data-gpios = <&gpio3 9 GPIO_ACTIVE_HIGH>, <&gpio3 11 GPIO_ACTIVE_HIGH>,
+			  <&gpio3 10 GPIO_ACTIVE_HIGH>, <&gpio3 13 GPIO_ACTIVE_HIGH>,
+			  <&gpio3 12 GPIO_ACTIVE_HIGH>, <&gpio3 7 GPIO_ACTIVE_HIGH>,
+			  <&gpio3 8 GPIO_ACTIVE_HIGH>, <&gpio5 25 GPIO_ACTIVE_HIGH>;
+	retoon,ulpi-drive-vbus;
+	dr_mode = "host";
+	phy_type = "ulpi";
+	fsl,usbphy = <&usbphy_otg>;
+	disable-over-current;
+	status = "okay";
+};
+
+&usbh2 {	/* RT5370 WiFi */
+	/* PHY sees the bus only after the controller is in ULPI mode (see the
+	 * ci_hdrc_imx patch): "default" holds the pins as GPIOs */
+	pinctrl-names = "default", "ulpi";
+	pinctrl-0 = <&pinctrl_usbh2_hold>;
+	pinctrl-1 = <&pinctrl_usbh2>;
+	ulpi-stp-gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
+	ulpi-data-gpios = <&gpio4 22 GPIO_ACTIVE_HIGH>, <&gpio4 24 GPIO_ACTIVE_HIGH>,
+			  <&gpio4 23 GPIO_ACTIVE_HIGH>, <&gpio4 20 GPIO_ACTIVE_HIGH>,
+			  <&gpio4 19 GPIO_ACTIVE_HIGH>, <&gpio4 26 GPIO_ACTIVE_HIGH>,
+			  <&gpio4 21 GPIO_ACTIVE_HIGH>, <&gpio1 2 GPIO_ACTIVE_HIGH>;
+	dr_mode = "host";
+	phy_type = "ulpi";
+	fsl,usbphy = <&usbphy_h2>;
+	disable-over-current;
+	status = "okay";
+};
+
+&nfc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_nfc>;
+	nand-bus-width = <8>;
+	nand-ecc-mode = "hw";
+	status = "okay";
+
+	/* Same layout as the original system. Writable: the two partitions ReToon
+	 * boots from (kernel + its initrd) and the original UBI with our files;
+	 * U-Boot, its environment and the splash stay read-only. */
+	partitions {
+		compatible = "fixed-partitions";
+		#address-cells = <1>;
+		#size-cells = <1>;
+
+		partition@0 {
+			label = "u-boot";
+			reg = <0x00000000 0x00100000>;
+			read-only;
+		};
+
+		partition@100000 {
+			label = "u-boot-env";
+			reg = <0x00100000 0x00080000>;
+		};
+
+		/* U-Boot's start-up picture (a BMP): writable, so that with
+		   "Always start ReToon" ReToon's own goes there (toon-bootsplash,
+		   which keeps the original on the data partition) */
+		partition@180000 {
+			label = "splash-image";
+			reg = <0x00180000 0x00180000>;
+		};
+
+		partition@300000 {
+			label = "kernel";
+			reg = <0x00300000 0x00300000>;
+		};
+
+		partition@600000 {
+			label = "kernel-backup";
+			reg = <0x00600000 0x00300000>;
+		};
+
+		partition@900000 {
+			/* the original UBI/UBIFS; ReToon keeps its files in mnt/data/toon-os */
+			label = "rootfs";
+			reg = <0x00900000 0x07700000>;
+		};
+	};
+};
+
+&gpio6 {
+	/* WiFi dongle and Z-Wave chip kept running, as the original system does */
+	wlan-enable-hog {
+		gpio-hog;
+		gpios = <13 GPIO_ACTIVE_HIGH>;	/* WLAN_DIS_N */
+		output-high;
+		line-name = "WLAN_DIS_N";
+	};
+
+	zwave-buffer-hog {
+		gpio-hog;
+		gpios = <11 GPIO_ACTIVE_HIGH>;	/* ZW_BUFF_OE_N: SPI buffer off */
+		output-high;
+		line-name = "ZW_BUFF_OE_N";
+	};
+
+	zwave-reset-hog {
+		gpio-hog;
+		gpios = <14 GPIO_ACTIVE_HIGH>;	/* ZW_RESET_N */
+		output-high;
+		line-name = "ZW_RESET_N";
+	};
+};
+
+&iomuxc {
+	toon1 {
+		pinctrl_tout: toutgrp {
+			fsl,pins = <
+				MX27_PAD_TOUT__TOUT		0x0
+			>;
+		};
+
+		pinctrl_audmux: audmuxgrp {
+			fsl,pins = <
+				MX27_PAD_SSI3_FS__SSI3_FS	0x0
+				MX27_PAD_SSI3_RXDAT__SSI3_RXDAT	0x0
+				MX27_PAD_SSI3_TXDAT__SSI3_TXDAT	0x0
+				MX27_PAD_SSI3_CLK__SSI3_CLK	0x0
+			>;
+		};
+
+		pinctrl_uart1: uart1grp {
+			fsl,pins = <
+				MX27_PAD_UART1_TXD__UART1_TXD	0x0
+				MX27_PAD_UART1_RXD__UART1_RXD	0x0
+			>;
+		};
+
+		pinctrl_uart2: uart2grp {
+			fsl,pins = <
+				MX27_PAD_UART2_TXD__UART2_TXD	0x0
+				MX27_PAD_UART2_RXD__UART2_RXD	0x0
+			>;
+		};
+
+		pinctrl_uart3: uart3grp {
+			fsl,pins = <
+				MX27_PAD_UART3_TXD__UART3_TXD	0x0
+				MX27_PAD_UART3_RXD__UART3_RXD	0x0
+			>;
+		};
+
+		pinctrl_fec: fecgrp {
+			fsl,pins = <
+				MX27_PAD_SD3_CMD__FEC_TXD0	0x0
+				MX27_PAD_SD3_CLK__FEC_TXD1	0x0
+				MX27_PAD_ATA_DATA0__FEC_TXD2	0x0
+				MX27_PAD_ATA_DATA1__FEC_TXD3	0x0
+				MX27_PAD_ATA_DATA2__FEC_RX_ER	0x0
+				MX27_PAD_ATA_DATA3__FEC_RXD1	0x0
+				MX27_PAD_ATA_DATA4__FEC_RXD2	0x0
+				MX27_PAD_ATA_DATA5__FEC_RXD3	0x0
+				MX27_PAD_ATA_DATA6__FEC_MDIO	0x0
+				MX27_PAD_ATA_DATA7__FEC_MDC	0x0
+				MX27_PAD_ATA_DATA8__FEC_CRS	0x0
+				MX27_PAD_ATA_DATA9__FEC_TX_CLK	0x0
+				MX27_PAD_ATA_DATA10__FEC_RXD0	0x0
+				MX27_PAD_ATA_DATA11__FEC_RX_DV	0x0
+				MX27_PAD_ATA_DATA12__FEC_RX_CLK	0x0
+				MX27_PAD_ATA_DATA13__FEC_COL	0x0
+				MX27_PAD_ATA_DATA14__FEC_TX_ER	0x0
+				MX27_PAD_ATA_DATA15__FEC_TX_EN	0x0
+				MX27_PAD_CLS__GPIO1_25		0x0	/* ETH_RST_N */
+			>;
+		};
+
+		pinctrl_i2c1: i2c1grp {
+			fsl,pins = <
+				MX27_PAD_I2C_DATA__I2C_DATA	0x0
+				MX27_PAD_I2C_CLK__I2C_CLK	0x0
+			>;
+		};
+
+		pinctrl_i2c2: i2c2grp {
+			fsl,pins = <
+				MX27_PAD_I2C2_SDA__I2C2_SDA	0x0
+				MX27_PAD_I2C2_SCL__I2C2_SCL	0x0
+			>;
+		};
+
+		pinctrl_touch: touchgrp {
+			fsl,pins = <
+				MX27_PAD_PC_CD1_B__GPIO6_20	0x0	/* TS_PENIRQ */
+			>;
+		};
+
+		pinctrl_pwm: pwmgrp {
+			fsl,pins = <
+				MX27_PAD_PWMO__PWMO		0x0
+			>;
+		};
+
+		pinctrl_lcd: lcdgrp {
+			fsl,pins = <
+				MX27_PAD_LSCLK__LSCLK		0x0
+				MX27_PAD_LD0__LD0		0x0
+				MX27_PAD_LD1__LD1		0x0
+				MX27_PAD_LD2__LD2		0x0
+				MX27_PAD_LD3__LD3		0x0
+				MX27_PAD_LD4__LD4		0x0
+				MX27_PAD_LD5__LD5		0x0
+				MX27_PAD_LD6__LD6		0x0
+				MX27_PAD_LD7__LD7		0x0
+				MX27_PAD_LD8__LD8		0x0
+				MX27_PAD_LD9__LD9		0x0
+				MX27_PAD_LD10__LD10		0x0
+				MX27_PAD_LD11__LD11		0x0
+				MX27_PAD_LD12__LD12		0x0
+				MX27_PAD_LD13__LD13		0x0
+				MX27_PAD_LD14__LD14		0x0
+				MX27_PAD_LD15__LD15		0x0
+				MX27_PAD_LD16__LD16		0x0
+				MX27_PAD_LD17__LD17		0x0
+				MX27_PAD_HSYNC__HSYNC		0x0
+				MX27_PAD_VSYNC__VSYNC		0x0
+				MX27_PAD_OE_ACD__OE_ACD		0x0
+			>;
+		};
+
+		/* Panel rails: GPIO *output* (mux 0x036). The 0x032 of the
+		 * GPIOx_y macros means input, and applying that turns the rails
+		 * off again: the screen goes white. */
+		pinctrl_lcd_min7v: lcdmin7vgrp {
+			fsl,pins = <0x79 0x036 0x0>;	/* PD25 EN_MIN7V */
+		};
+
+		pinctrl_lcd_16v: lcd16vgrp {
+			fsl,pins = <0x7b 0x036 0x0>;	/* PD27 EN_16V_10V4 */
+		};
+
+		pinctrl_leds: ledsgrp {
+			fsl,pins = <
+				MX27_PAD_PC_READY__GPIO6_17	0x0
+				MX27_PAD_PC_POE__GPIO6_7	0x0
+			>;
+		};
+
+		pinctrl_hogs: hogsgrp {
+			fsl,pins = <
+				MX27_PAD_PC_VS2__GPIO6_13	0x0	/* WLAN_DIS_N */
+				MX27_PAD_PC_BVD2__GPIO6_11	0x0	/* ZW_BUFF_OE_N */
+				MX27_PAD_PC_VS1__GPIO6_14	0x0	/* ZW_RESET_N */
+				MX27_PAD_USBH1_RCV__GPIO2_25	0x0	/* USB1_RESET_N */
+			>;
+		};
+
+		/* OTG ULPI pins as GPIOs: CLK, DIR, NXT in (0x032), STP and
+		 * DATA0-7 out (0x036); values come from the ulpi-*-gpios */
+		pinctrl_usbotg_hold: usbotgholdgrp {
+			fsl,pins = <
+				0x98 0x032 0x0	/* PE24 CLK */
+				0x82 0x032 0x0	/* PE2 DIR */
+				0x80 0x032 0x0	/* PE0 NXT */
+				0x81 0x036 0x0	/* PE1 STP */
+				0x49 0x036 0x0	/* PC9 DATA0 */
+				0x4b 0x036 0x0	/* PC11 DATA1 */
+				0x4a 0x036 0x0	/* PC10 DATA2 */
+				0x4d 0x036 0x0	/* PC13 DATA3 */
+				0x4c 0x036 0x0	/* PC12 DATA4 */
+				0x47 0x036 0x0	/* PC7 DATA5 */
+				0x48 0x036 0x0	/* PC8 DATA6 */
+				0x99 0x036 0x0	/* PE25 DATA7 */
+			>;
+		};
+
+		pinctrl_usbotg: usbotggrp {
+			fsl,pins = <
+				MX27_PAD_USBOTG_CLK__USBOTG_CLK		0x0
+				MX27_PAD_USBOTG_DIR__USBOTG_DIR		0x0
+				MX27_PAD_USBOTG_NXT__USBOTG_NXT		0x0
+				MX27_PAD_USBOTG_STP__USBOTG_STP		0x0
+				MX27_PAD_USBOTG_DATA0__USBOTG_DATA0	0x0
+				MX27_PAD_USBOTG_DATA1__USBOTG_DATA1	0x0
+				MX27_PAD_USBOTG_DATA2__USBOTG_DATA2	0x0
+				MX27_PAD_USBOTG_DATA3__USBOTG_DATA3	0x0
+				MX27_PAD_USBOTG_DATA4__USBOTG_DATA4	0x0
+				MX27_PAD_USBOTG_DATA5__USBOTG_DATA5	0x0
+				MX27_PAD_USBOTG_DATA6__USBOTG_DATA6	0x0
+				MX27_PAD_USBOTG_DATA7__USBOTG_DATA7	0x0
+			>;
+		};
+
+		/* host 2 ULPI pins as GPIOs: CLK, DIR, NXT in (0x032), STP and
+		 * DATA0-7 out (0x036); values come from the ulpi-*-gpios */
+		pinctrl_usbh2_hold: usbh2holdgrp {
+			fsl,pins = <
+				0x00 0x032 0x0	/* PA0 CLK */
+				0x01 0x032 0x0	/* PA1 DIR */
+				0x03 0x032 0x0	/* PA3 NXT */
+				0x04 0x036 0x0	/* PA4 STP */
+				0x76 0x036 0x0	/* PD22 DATA0 */
+				0x78 0x036 0x0	/* PD24 DATA1 */
+				0x77 0x036 0x0	/* PD23 DATA2 */
+				0x74 0x036 0x0	/* PD20 DATA3 */
+				0x73 0x036 0x0	/* PD19 DATA4 */
+				0x7a 0x036 0x0	/* PD26 DATA5 */
+				0x75 0x036 0x0	/* PD21 DATA6 */
+				0x02 0x036 0x0	/* PA2 DATA7 */
+			>;
+		};
+
+		pinctrl_usbh2: usbh2grp {
+			fsl,pins = <
+				MX27_PAD_USBH2_CLK__USBH2_CLK		0x0
+				MX27_PAD_USBH2_DIR__USBH2_DIR		0x0
+				MX27_PAD_USBH2_NXT__USBH2_NXT		0x0
+				MX27_PAD_USBH2_STP__USBH2_STP		0x0
+				MX27_PAD_CSPI2_SCLK__USBH2_DATA0	0x0
+				MX27_PAD_CSPI2_MOSI__USBH2_DATA1	0x0
+				MX27_PAD_CSPI2_MISO__USBH2_DATA2	0x0
+				MX27_PAD_CSPI2_SS1__USBH2_DATA3		0x0
+				MX27_PAD_CSPI2_SS2__USBH2_DATA4		0x0
+				MX27_PAD_CSPI1_SS2__USBH2_DATA5		0x0
+				MX27_PAD_CSPI2_SS0__USBH2_DATA6		0x0
+				MX27_PAD_USBH2_DATA7__USBH2_DATA7	0x0
+			>;
+		};
+
+		pinctrl_nfc: nfcgrp {
+			fsl,pins = <
+				MX27_PAD_NFRB__NFRB		0x0
+				MX27_PAD_NFCLE__NFCLE		0x0
+				MX27_PAD_NFWP_B__NFWP_B		0x0
+				MX27_PAD_NFCE_B__NFCE_B		0x0
+				MX27_PAD_NFALE__NFALE		0x0
+				MX27_PAD_NFRE_B__NFRE_B		0x0
+				MX27_PAD_NFWE_B__NFWE_B		0x0
+			>;
+		};
+	};
+};
+
+&iomuxc {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_hogs>;
+};

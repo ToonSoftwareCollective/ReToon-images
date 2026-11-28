@@ -1,0 +1,6 @@
+config BR2_PACKAGE_ENS210
+	bool "ens210"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree IIO driver for the ScioSense ENS210
+	  temperature/humidity sensor (no mainline driver).

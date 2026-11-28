@@ -1,0 +1,99 @@
+#!/bin/sh
+# Apps from the ReToon app catalogue (ToonSoftwareCollective/ReToon-apps),
+# for the web interface:
+#   toon-apps list            print the catalogue (index.json)
+#   toon-apps install <id>    install the catalogue's version of an app (also
+#                             to update it); its settings are kept
+#   toon-apps remove <id>     remove an app and its settings
+#   toon-apps update          install the catalogue's newer version of each
+#                             installed app this ReToon can run (settings
+#                             kept); prints "<id> <old> <new> <name>" a line
+#                             for each one updated (toon-autoupdate)
+# The screen loads apps when it starts; the web interface restarts it after
+# a change. Errors go to stderr as one line, for the web page.
+SRC=${TOON_APPS_SRC:-https://github.com/ToonSoftwareCollective/ReToon-apps/releases/download/apps}
+APPS=/mnt/data/toon-os/apps
+CONF=/mnt/data/toon-os/config/apps
+API=$(cat /usr/share/toon/apps-api 2>/dev/null || echo 1)
+FETCH="curl -fsSL --connect-timeout 20 --max-time 120 --max-filesize 2000000"
+TMP=/tmp/toon-apps.$$
+
+fail() { echo "$1" >&2; rm -rf $TMP; [ -n "$rw" ] && ro; exit 1; }
+rw() { mount -o remount,rw /mnt/data && rw=1; }
+# not while toon-update is writing its download there
+ro() { sync; [ -d /run/toon/update.lock ] || mount -o remount,ro /mnt/data 2>/dev/null; rw=; }
+check_id() {
+	case "$1" in ""|-*|*[!a-z0-9-]*) fail "Not an app name: $1" ;; esac
+}
+
+case "$1" in
+list)
+	$FETCH "$SRC/index.json" ||
+		fail "Could not reach the app catalogue on GitHub. Is this ReToon connected to the internet?"
+	;;
+install)
+	check_id "$2"
+	mkdir -p $TMP
+	$FETCH -o $TMP/index.txt "$SRC/index.txt" ||
+		fail "Could not reach the app catalogue on GitHub. Is this ReToon connected to the internet?"
+	want=$2
+	set -- $(awk -v id="$want" '$1 == id' $TMP/index.txt)
+	[ $# = 5 ] || fail "The catalogue has no app \"$want\"."
+	id=$1 version=$2 api=$3 sum=$4 file=$5
+	[ "$api" -le "$API" ] 2>/dev/null ||
+		fail "This app needs a newer ReToon. Please update it (Status)."
+	$FETCH -o $TMP/app.tar.gz "$SRC/$file" || fail "Could not fetch the app. Try again."
+	[ "$(sha256sum $TMP/app.tar.gz | cut -d ' ' -f 1)" = "$sum" ] ||
+		fail "The app arrived damaged. Try again."
+	# only plain files inside the app's folder
+	gunzip -c $TMP/app.tar.gz | tar -tf - > $TMP/list || fail "The app arrived damaged. Try again."
+	grep -q -e '^/' -e '\.\.' $TMP/list && fail "The app's archive is not right."
+	rw || fail "Cannot write to the data partition."
+	rm -rf "$APPS/.$id.new" "$APPS/.$id.old"
+	mkdir -p "$APPS/.$id.new"
+	gunzip -c $TMP/app.tar.gz | tar -xf - -o -C "$APPS/.$id.new" 2>/dev/null ||
+		{ rm -rf "$APPS/.$id.new"; fail "Could not unpack the app. Is the data partition full?"; }
+	grep -q "\"id\": *\"$id\"" "$APPS/.$id.new/manifest.json" 2>/dev/null ||
+		{ rm -rf "$APPS/.$id.new"; fail "The app's archive is not right."; }
+	[ -d "$APPS/$id" ] && mv "$APPS/$id" "$APPS/.$id.old"
+	mv "$APPS/.$id.new" "$APPS/$id"
+	rm -rf "$APPS/.$id.old" $TMP
+	ro
+	echo "$id $version"
+	;;
+update)
+	mkdir -p $TMP
+	$FETCH -o $TMP/index.txt "$SRC/index.txt" ||
+		fail "Could not reach the app catalogue on GitHub. Is this ReToon connected to the internet?"
+	for m in $APPS/*/manifest.json; do
+		[ -f "$m" ] || continue
+		id=$(basename "$(dirname "$m")")
+		have=$(sed -n 's/.*"version": *"\([^"]*\)".*/\1/p' "$m" | head -n 1)
+		set -- $(awk -v id="$id" '$1 == id' $TMP/index.txt)
+		[ $# = 5 ] || continue			# not (or no longer) in the catalogue
+		[ "$3" -le "$API" ] 2>/dev/null || continue	# needs a newer ReToon
+		# newer: compare the numbers between the dots
+		awk -v a="$2" -v b="$have" 'BEGIN {
+			n = split(a, x, "."); m = split(b, y, ".")
+			for (i = 1; i <= (n > m ? n : m); i++)
+				if (x[i] + 0 != y[i] + 0) exit !(x[i] + 0 > y[i] + 0)
+			exit 1 }' || continue
+		new=$2
+		"$0" install "$id" >/dev/null || continue
+		name=$(sed -n 's/.*"name": *"\([^"]*\)".*/\1/p' "$APPS/$id/manifest.json" | head -n 1)
+		echo "$id ${have:-?} $new ${name:-$id}"
+	done
+	rm -rf $TMP
+	;;
+remove)
+	check_id "$2"
+	[ -d "$APPS/$2" ] || fail "No app \"$2\" is installed."
+	rw || fail "Cannot write to the data partition."
+	rm -rf "$APPS/$2" "$CONF/$2.json"
+	ro
+	;;
+*)
+	echo "usage: $0 list | install <id> | remove <id> | update" >&2
+	exit 2
+	;;
+esac

@@ -1,0 +1,42 @@
+#!/bin/sh
+# The Z-Wave controller on TCP port 6639. Off unless config/zwave.conf on p4
+# says otherwise (web interface, Settings):
+#   mode=remote   for Z-Wave JS in Home Assistant: tcp://<this Toon>:6639
+#   mode=local    only for software on the Toon itself (127.0.0.1)
+#   allow=<address>   with mode=remote: the one address that may connect
+CONF=/mnt/data/toon-os/config/zwave.conf
+PIDFILE=/var/run/toon-zwaved.pid
+val() { sed -n "s/^$1=//p" $CONF 2>/dev/null | tail -n 1 | tr -d '\r'; }
+# retoon/zwave when the daemon does not run (it sends its own otherwise);
+# again after the broker restarted (S41toon-broker), which forgets it
+off_state() {
+	case "$(val mode)" in remote|local) ;; *) echo "state=off" | toon-bus put zwave ;; esac
+}
+
+case "$1" in
+  start)
+	mode=$(val mode)
+	case "$mode" in
+	remote) bind=0.0.0.0 ;;
+	local) bind=127.0.0.1 ;;
+	*) off_state; exit 0 ;;
+	esac
+	allow=$(val allow)
+	echo "$allow" | grep -q '[^0-9.]' && allow=
+	# the chip's UART: ttymxc1 on a Toon 2, ttymxc2 on a Toon 1
+	tty=/dev/ttymxc1
+	grep -q "Toon 1" /proc/device-tree/model 2>/dev/null && tty=/dev/ttymxc2
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-zwaved -- $bind "$allow" $tty
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	toon-bus put zwave </dev/null	# retoon/zwave: nothing to say
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+  bus-state)
+	off_state
+	;;
+esac
+exit 0

@@ -1,0 +1,11 @@
+#!/bin/sh
+# The start-up picture on the panel, until S50toon-ui takes over.
+case "$1" in
+  start)
+	[ -e /dev/fb0 ] || exit 0
+	# the text console lets go of the panel, or its cursor shows through
+	[ -e /sys/class/vtconsole/vtcon1/bind ] && echo 0 > /sys/class/vtconsole/vtcon1/bind
+	/usr/bin/toon-splash &
+	;;
+esac
+exit 0

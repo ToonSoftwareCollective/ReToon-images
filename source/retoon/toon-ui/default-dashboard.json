@@ -1,0 +1,234 @@
+{
+  "views": [
+    {
+      "title": "Home",
+      "icon": "mdi:home",
+      "type": "retoon-grid",
+      "cards": [
+        {
+          "type": "thermostat",
+          "entity": "toon.thermostat",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 7
+          }
+        },
+        {
+          "type": "custom:toon-clock",
+          "position": {
+            "x": 6,
+            "y": 0,
+            "w": 6,
+            "h": 2
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.humidity",
+          "position": {
+            "x": 6,
+            "y": 2,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.air_quality",
+          "position": {
+            "x": 9,
+            "y": 2,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.flame",
+          "position": {
+            "x": 6,
+            "y": 3,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.water_pressure",
+          "position": {
+            "x": 9,
+            "y": 3,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.hot_water",
+          "position": {
+            "x": 6,
+            "y": 4,
+            "w": 6,
+            "h": 1
+          }
+        }
+      ]
+    },
+    {
+      "title": "Heating",
+      "icon": "mdi:radiator",
+      "type": "retoon-grid",
+      "cards": [
+        {
+          "type": "heading",
+          "heading": "Boiler",
+          "icon": "mdi:water-boiler",
+          "position": {
+            "x": 0,
+            "y": 0,
+            "w": 6,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.boiler_connection",
+          "features": [
+            {
+              "type": "select-options"
+            }
+          ],
+          "position": {
+            "x": 0,
+            "y": 1,
+            "w": 6,
+            "h": 2
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.boiler_message",
+          "position": {
+            "x": 0,
+            "y": 3,
+            "w": 6,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.flame",
+          "position": {
+            "x": 0,
+            "y": 4,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.modulation",
+          "position": {
+            "x": 3,
+            "y": 4,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.boiler_fault",
+          "position": {
+            "x": 0,
+            "y": 5,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.fault_code",
+          "position": {
+            "x": 3,
+            "y": 5,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "heading",
+          "heading": "Water",
+          "icon": "mdi:thermometer-water",
+          "position": {
+            "x": 6,
+            "y": 0,
+            "w": 6,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.boiler_water",
+          "position": {
+            "x": 6,
+            "y": 1,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.return_water",
+          "position": {
+            "x": 9,
+            "y": 1,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.flow_setpoint",
+          "position": {
+            "x": 6,
+            "y": 2,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.water_pressure",
+          "position": {
+            "x": 9,
+            "y": 2,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.max_heating_setpoint",
+          "position": {
+            "x": 6,
+            "y": 3,
+            "w": 3,
+            "h": 1
+          }
+        },
+        {
+          "type": "tile",
+          "entity": "toon.hot_water_setpoint",
+          "position": {
+            "x": 9,
+            "y": 3,
+            "w": 3,
+            "h": 1
+          }
+        }
+      ]
+    }
+  ]
+}

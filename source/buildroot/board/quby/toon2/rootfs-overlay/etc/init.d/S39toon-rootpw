@@ -1,0 +1,14 @@
+#!/bin/sh
+# Password of root (SSH, serial console): "toon" as built in, or the one
+# chosen in the web interface. Only its hash is kept, in config/root.hash on
+# p4. /etc/shadow is rebuilt from the image at every start, so put it in
+# here. Rescue mode (the initrd) does not look at it and stays root/toon.
+[ "$1" = start ] || exit 0
+hash=$(head -n 1 /mnt/data/toon-os/config/root.hash 2>/dev/null | tr -d '\r\n')
+case "$hash" in
+'$'[56]'$'*)
+	echo "$hash" | grep -q '[^A-Za-z0-9./$=,]' && exit 0
+	sed -i "s|^root:[^:]*:|root:$hash:|" /etc/shadow
+	;;
+esac
+exit 0

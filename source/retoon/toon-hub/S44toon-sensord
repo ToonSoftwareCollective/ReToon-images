@@ -1,0 +1,29 @@
+#!/bin/sh
+# Room climate (temperature, humidity, light) daemon.
+PIDFILE=/var/run/toon-sensord.pid
+# Toon 1: how warm the Toon is, kept across a restart (see toon-sensord.c).
+# Written to the flash only here, once per stop.
+STATE=/run/toon/sensord.state
+SAVED=/mnt/data/toon-os/sensord.state
+
+case "$1" in
+  start)
+	start-stop-daemon -S -q -b -m -p $PIDFILE -x /usr/bin/toon-sensord
+	;;
+  stop)
+	start-stop-daemon -K -q -p $PIDFILE
+	if [ -s $STATE ] && [ -d /mnt/data/toon-os ]; then
+		ro=0
+		grep -q ' /mnt/data [^ ]* ro[,  ]' /proc/mounts && ro=1
+		[ $ro = 0 ] || mount -o remount,rw /mnt/data 2>/dev/null
+		cp $STATE $SAVED.new && mv $SAVED.new $SAVED
+		sync
+		# not while toon-update is writing its download there
+		[ $ro = 0 ] || [ -d /run/toon/update.lock ] || mount -o remount,ro /mnt/data 2>/dev/null
+	fi
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

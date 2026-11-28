@@ -1,0 +1,38 @@
+From: ReToon
+Subject: [PATCH] ASoC: imx-pcm-fiq: request the SSI interrupt before enable_fiq()
+
+enable_fiq() calls enable_irq() on an interrupt nobody requested, so
+__irq_startup() warns "not activated" at the first playback.
+---
+--- a/sound/soc/fsl/imx-pcm-fiq.c	2026-10-25 09:42:37.451944859 +0000
++++ b/sound/soc/fsl/imx-pcm-fiq.c	2026-10-25 09:42:37.479946495 +0000
+@@ -278,6 +278,12 @@
+ 	.pcm_destruct	= snd_imx_pcm_free,
+ };
+ 
++/* never runs: the interrupt is routed to the FIQ */
++static irqreturn_t imx_pcm_fiq_irq(int irq, void *dev_id)
++{
++	return IRQ_NONE;
++}
++
+ int imx_pcm_fiq_init(struct platform_device *pdev,
+ 		struct imx_pcm_fiq_params *params)
+ {
+@@ -292,6 +298,16 @@
+ 	mxc_set_irq_fiq(params->irq, 1);
+ 	ssi_irq = params->irq;
+ 
++	/*
++	 * enable_fiq() is enable_irq() on this interrupt (FIQ_START is 0);
++	 * request it without enabling so its descriptor is activated, or
++	 * __irq_startup() warns at the first playback.
++	 */
++	if (devm_request_irq(&pdev->dev, params->irq, imx_pcm_fiq_irq,
++			     IRQF_NO_AUTOEN, "imx-pcm-fiq", NULL))
++		dev_warn(&pdev->dev, "could not reserve irq %d for the fiq\n",
++			 params->irq);
++
+ 	imx_pcm_fiq = params->irq;
+ 
+ 	imx_ssi_fiq_base = (unsigned long)params->base;

@@ -1,0 +1,169 @@
+#!/bin/sh
+# WiFi helper for the screen (toon-ui).
+#   toon-wifi scan                 lines "signal secure ssid", strongest first
+#   toon-wifi link                 ssid=<current network>
+#   toon-wifi connect SSID [PASS]  write the configuration and connect; if that
+#                                  fails the previous configuration is put back
+# exit status of connect: 0 connected, 1 failed, 2 bad password length
+DIR=/mnt/data/toon-os/config
+CONF=$DIR/wpa_supplicant.conf
+IF=wlan0
+
+# A stick whose driver only has the old wireless extensions (the Toon 1's
+# Realtek RTL8191SU, r8712u) does not answer iw (nl80211): use iwlist and
+# iwconfig for it, with the same output.
+wext() { ! iw dev $IF info >/dev/null 2>&1 && command -v iwlist >/dev/null 2>&1; }
+
+# "signal secure ssid" per network from iwlist (scan: a new scan; last: what
+# the driver has). Its level is a percentage or dBm; a percentage becomes
+# about dBm as pct / 2 - 100.
+wext_list() {
+	timeout 15 iwlist $IF "$1" 2>/dev/null | awk '
+		function flush() { if (ssid != "" && (!(ssid in best) || sig > best[ssid])) { best[ssid] = sig; sec[ssid] = secure } }
+		/ Cell [0-9]+ - Address/ { flush(); ssid = ""; sig = -100; secure = 0 }
+		/ESSID:"/ { v = $0; sub(/.*ESSID:"/, "", v); sub(/"[^"]*$/, "", v); ssid = v }
+		/Signal level[=:]/ { v = $0; sub(/.*Signal level[=:]/, "", v)
+			if (v ~ /^[0-9]+\/[0-9]+/) { split(v, a, "/"); sig = int(a[1] * 100 / a[2] / 2 - 100) }
+			else sig = int(v) }
+		/Encryption key:on/ { secure = 1 }
+		END { flush(); for (s in best) if (s !~ /\\x00/) print best[s], sec[s], s }' | sort -rn
+}
+
+up() {
+	[ "$(cat /sys/class/net/$IF/operstate 2>/dev/null)" = up ] &&
+		ifconfig $IF 2>/dev/null | grep -q 'inet addr'
+}
+
+restart() {
+	if [ -e /etc/toon-rescue ]; then
+		# rescue mode (the initrd): no ifup there, start the two by hand
+		killall -q wpa_supplicant udhcpc
+		sleep 1
+		wpa_supplicant -B -i $IF -c $CONF -D nl80211,wext >/dev/null 2>&1
+		udhcpc -i $IF -b -x hostname:toon-rescue >/dev/null 2>&1
+	else
+		ifdown -f $IF >/dev/null 2>&1
+		killall -q wpa_supplicant
+		# only this interface's DHCP client: on the Toon 1 eth0 has one too
+		[ -f /var/run/udhcpc.$IF.pid ] && kill $(cat /var/run/udhcpc.$IF.pid) 2>/dev/null
+		sleep 1
+		ifup $IF >/dev/null 2>&1
+	fi
+	i=0
+	while [ $i -lt 30 ]; do
+		up && return 0
+		sleep 1
+		i=$((i + 1))
+	done
+	return 1
+}
+
+case "$1" in
+scan)
+	# A USB stick (Toon 1) loads its firmware when it comes up, and while it
+	# is connected a full scan can take long. So: let it come up, start a
+	# scan without waiting for it, and read what the kernel collected (also
+	# what wpa_supplicant found) a few seconds later.
+	if [ $(( $(cat /sys/class/net/$IF/flags 2>/dev/null || echo 0) & 1 )) -eq 0 ]; then
+		ip link set $IF up 2>/dev/null
+		sleep 2
+	fi
+	scan_once() {
+		if wext; then
+			wext_list scan
+			return
+		fi
+		iw dev $IF scan trigger >/dev/null 2>&1
+		sleep 4
+		iw dev $IF scan dump 2>/dev/null | awk '
+			function flush() { if (ssid != "" && (!(ssid in best) || sig > best[ssid])) { best[ssid] = sig; sec[ssid] = secure } }
+			/^BSS / { flush(); ssid = ""; sig = -100; secure = 0 }
+			/^\tsignal:/ { sig = int($2) }
+			/^\tSSID: / { ssid = substr($0, 8) }
+			/^\t(RSN|WPA):/ { secure = 1 }
+			/^\tcapability:.*Privacy/ { secure = 1 }
+			END { flush(); for (s in best) if (s !~ /\\x00/) print best[s], sec[s], s }' | sort -rn
+	}
+	# right after the interface came up the first try can come back empty
+	out=$(scan_once)
+	[ -n "$out" ] || { sleep 2; out=$(scan_once); }
+	[ -n "$out" ] && echo "$out"
+	;;
+link)
+	if wext; then
+		info=$(iwconfig $IF 2>/dev/null)
+		ssid=$(echo "$info" | awk '/ESSID:"/ { v = $0; sub(/.*ESSID:"/, "", v); if (!sub(/" +Nickname:.*$/, "", v)) sub(/" *$/, "", v); print v; exit }')
+		[ -n "$ssid" ] || exit 0
+		echo "ssid=$ssid"
+		# the driver's own signal while connected (a percentage, about
+		# pct / 2 - 100 dBm, or dBm); without one, that of its last scan
+		sig=$(echo "$info" | awk '/Signal level[=:]/ { v = $0; sub(/.*Signal level[=:]/, "", v)
+			if (v ~ /^[0-9]+\/[0-9]+/) { split(v, a, "/"); if (a[1] > 0) print int(a[1] * 100 / a[2] / 2 - 100) }
+			else if (int(v) < 0) print int(v)
+			exit }')
+		[ -n "$sig" ] || sig=$(wext_list last | awk -v s="$ssid" '{ n = $0; sub(/^[^ ]+ [^ ]+ /, "", n) } n == s { print $1; exit }')
+		[ -n "$sig" ] && echo "signal=$sig"
+		exit 0
+	fi
+	iw dev $IF link 2>/dev/null | sed -n 's/^\tSSID: /ssid=/p; s/^\tsignal: \(-*[0-9]*\) dBm.*/signal=\1/p'
+	;;
+connect)
+	ssid=$2
+	pass=$3
+	[ -n "$ssid" ] || exit 1
+	if [ -n "$pass" ]; then
+		case "$pass" in
+		????????*) ;;
+		*) exit 2 ;;
+		esac
+		if echo "$pass" | grep -q '^[0-9a-fA-F]\{64\}$'; then
+			psk=$pass
+		else
+			[ ${#pass} -le 63 ] || exit 2
+			psk=$(wpa_passphrase "$ssid" "$pass" | sed -n 's/^\tpsk=//p')
+			[ -n "$psk" ] || exit 2
+		fi
+	fi
+	hex=$(printf %s "$ssid" | od -An -tx1 | tr -d ' \n')
+	mount -o remount,rw /mnt/data || exit 1
+	mkdir -p $DIR
+	chmod 700 $DIR
+	rm -f $CONF.bak
+	[ -f $CONF ] && cp -p $CONF $CONF.bak
+	{
+		echo "network={"
+		echo "	ssid=$hex"
+		echo "	scan_ssid=1"
+		if [ -n "$pass" ]; then
+			echo "	key_mgmt=WPA-PSK"
+			echo "	psk=$psk"
+		else
+			echo "	key_mgmt=NONE"
+		fi
+		echo "}"
+	} > $CONF.new
+	chmod 600 $CONF.new
+	mv $CONF.new $CONF
+	sync
+	if restart; then
+		rm -f $CONF.bak
+		ret=0
+	else
+		ret=1
+		if [ -f $CONF.bak ]; then
+			mv $CONF.bak $CONF
+			sync
+			restart
+		else
+			rm -f $CONF
+		fi
+	fi
+	sync
+	mount -o remount,ro /mnt/data 2>/dev/null
+	exit $ret
+	;;
+*)
+	echo "usage: toon-wifi scan | link | connect SSID [PASSWORD]" >&2
+	exit 1
+	;;
+esac

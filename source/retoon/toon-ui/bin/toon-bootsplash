@@ -1,0 +1,122 @@
+#!/bin/sh
+# U-Boot's start-up picture follows "Always start ReToon" (config/autoboot):
+# with it on, the Toon shows ReToon's picture from the moment it is switched
+# on, the same as the first frame of toon-splash; with it off, the original
+# software's picture again.
+#   toon-bootsplash sync     as config/autoboot says (S98toon-keep-boot, web)
+#   toon-bootsplash on|off   ReToon's picture / the original one
+#   toon-bootsplash status
+#
+# Toon 2: U-Boot shows splash-custom.bmp on p1 when that file is there, else
+# the original splash.bmp, which is never touched: "on" writes the file,
+# "off" removes it.
+# Toon 1: the picture is a BMP at the start of the flash partition
+# "splash-image". Before it is first overwritten, the original is kept in
+# toon-os/bootsplash/original.bmp on the data partition; "off" writes that
+# back. The flash is only written when it differs, and read back after.
+OS=/mnt/data/toon-os
+KEEP=$OS/bootsplash
+LOCK=/run/toon/bootsplash.lock
+P1=/tmp/toon-bootsplash-p1
+NEW=/tmp/toon-bootsplash.bmp
+export PATH=/sbin:/usr/sbin:/bin:/usr/bin
+
+say() { echo "toon-bootsplash: $*" >&2; logger -t toon-bootsplash "$*" 2>/dev/null; }
+
+case "$1" in
+sync) [ -e $OS/config/autoboot ] && want=on || want=off ;;
+on|off) want=$1 ;;
+status) want=status ;;
+*) echo "usage: toon-bootsplash sync|on|off|status" >&2; exit 2 ;;
+esac
+
+if grep -q "Toon 1" /proc/device-tree/model 2>/dev/null; then
+	board=toon1
+elif [ -b /dev/mmcblk3p1 ]; then
+	board=toon2
+else
+	say "not a Toon this knows"
+	exit 1
+fi
+
+mkdir -p /run/toon
+mkdir $LOCK 2>/dev/null || { say "already busy"; exit 1; }
+cleanup() { umount $P1 2>/dev/null; rm -f $NEW; rmdir $LOCK 2>/dev/null; }
+trap cleanup EXIT
+
+# ReToon's picture for this panel, as toon-splash draws its first frame
+make_new() { toon-splash --bmp $NEW && [ -s $NEW ]; }
+
+# ---- Toon 2: a file on p1 -----------------------------------------------
+if [ $board = toon2 ]; then
+	mkdir -p $P1
+	mount -t vfat /dev/mmcblk3p1 $P1 2>/dev/null || { say "cannot mount p1"; exit 1; }
+	if [ "$want" = status ]; then
+		[ -f $P1/splash-custom.bmp ] && echo on || echo off
+		exit 0
+	fi
+	if [ "$want" = on ]; then
+		make_new || { say "could not make the picture"; exit 1; }
+		cmp -s $NEW $P1/splash-custom.bmp && exit 0
+		cp $NEW $P1/splash-custom.new && sync && mv $P1/splash-custom.new $P1/splash-custom.bmp &&
+			sync && say "U-Boot shows ReToon's picture" || { rm -f $P1/splash-custom.new; exit 1; }
+	elif [ -e $P1/splash-custom.bmp ]; then
+		rm -f $P1/splash-custom.bmp && sync && say "U-Boot shows the original picture again"
+	fi
+	exit 0
+fi
+
+# ---- Toon 1: the flash partition "splash-image" -----------------------------
+# by name, never by number (the original software numbers them differently)
+mtd=$(sed -n 's/^\(mtd[0-9]*\):.*"splash-image"$/\1/p' /proc/mtd)
+[ -n "$mtd" ] || { say "no splash-image partition"; exit 1; }
+dev=/dev/$mtd
+part=$(cat /sys/class/mtd/$mtd/size)
+
+# the BMP at the start of the partition: its size from the header
+bmp_size() { dd if=$dev bs=2048 count=1 2>/dev/null | head -c 6 | od -An -tu1 |
+	awk '$1 == 66 && $2 == 77 { print $3 + $4 * 256 + $5 * 65536 + $6 * 16777216 }'; }
+read_bmp() {	# file
+	n=$(bmp_size)
+	[ -n "$n" ] && [ "$n" -gt 54 ] && [ "$n" -le "$part" ] || return 1
+	dd if=$dev bs=2048 count=$(( (n + 2047) / 2048 )) 2>/dev/null | head -c $n > "$1"
+	[ "$(wc -c < "$1")" = "$n" ]
+}
+same_as() {	# file: is the partition's picture this file?
+	n=$(wc -c < "$1")
+	[ "$(dd if=$dev bs=2048 count=$(( (n + 2047) / 2048 )) 2>/dev/null | head -c $n | md5sum | cut -d' ' -f1)" = \
+	  "$(md5sum < "$1" | cut -d' ' -f1)" ]
+}
+write_flash() {	# file
+	[ $(( $(cat /sys/class/mtd/$mtd/flags) & 0x400 )) -ne 0 ] || { say "$mtd is read-only (kernel too old)"; return 1; }
+	[ "$(wc -c < "$1")" -le "$part" ] || { say "picture too large"; return 1; }
+	flash_erase -q $dev 0 0 && nandwrite -q -p $dev "$1" && same_as "$1"
+}
+
+if [ "$want" = status ]; then
+	make_new && same_as $NEW && echo on || echo off
+	exit 0
+fi
+if [ "$want" = on ]; then
+	make_new || { say "could not make the picture"; exit 1; }
+	same_as $NEW && exit 0
+	# keep the original before it is overwritten, once
+	if [ ! -s $KEEP/original.bmp ]; then
+		read_bmp /tmp/toon-bootsplash-orig.bmp || { say "no picture to keep in $mtd: not writing"; exit 1; }
+		mount -o remount,rw /mnt/data || exit 1
+		mkdir -p $KEEP && cp /tmp/toon-bootsplash-orig.bmp $KEEP/original.new && sync &&
+			mv $KEEP/original.new $KEEP/original.bmp && sync
+		ok=$?
+		# not while toon-update is writing its download there
+		[ -e /run/toon/update.lock ] || mount -o remount,ro /mnt/data
+		rm -f /tmp/toon-bootsplash-orig.bmp
+		[ $ok = 0 ] || { say "could not keep the original"; exit 1; }
+	fi
+	write_flash $NEW && say "U-Boot shows ReToon's picture" || { say "writing $mtd failed"; exit 1; }
+else
+	[ -s $KEEP/original.bmp ] || exit 0	# never changed here
+	same_as $KEEP/original.bmp && exit 0
+	write_flash $KEEP/original.bmp && say "U-Boot shows the original picture again" ||
+		{ say "writing $mtd failed"; exit 1; }
+fi
+exit 0

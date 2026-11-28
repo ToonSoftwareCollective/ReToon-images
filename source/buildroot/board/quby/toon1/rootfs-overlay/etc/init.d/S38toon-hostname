@@ -1,0 +1,26 @@
+#!/bin/sh
+# Host name: the one chosen in the web interface (config/hostname on p4), or
+# toon-<last three bytes of the WiFi MAC>. It is also sent to the DHCP server
+# so the unit can be found by name when its address changes. The id itself
+# goes to /run/toon/id: MQTT topics keep using it when the name changes.
+case "$1" in
+  start)
+	i=0
+	while [ $i -lt 10 ] && [ ! -e /sys/class/net/wlan0/address ]; do sleep 0.5; i=$((i + 1)); done
+	mac=$(cat /sys/class/net/wlan0/address 2>/dev/null | tr -d :)
+	# Toon 1: the WiFi stick may still be starting; the ethernet MAC then
+	[ -n "$mac" ] || mac=$(cat /sys/class/net/eth0/address 2>/dev/null | tr -d :)
+	id=${mac#??????}
+	name="toon-$id"
+	[ -n "$mac" ] || name=toon
+	mkdir -p /run/toon
+	[ -n "$id" ] && echo "id=$id" > /run/toon/id
+	own=$(head -n 1 /mnt/data/toon-os/config/hostname 2>/dev/null | tr -d '\r\n')
+	if [ -n "$own" ] && ! echo "$own" | grep -q '[^a-z0-9-]' && [ ${#own} -le 32 ]; then
+		name=$own
+	fi
+	hostname "$name"
+	sed -i "s/^\( *hostname\) .*/\1 $name/" /etc/network/interfaces
+	;;
+esac
+exit 0

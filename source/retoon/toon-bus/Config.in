@@ -1,0 +1,11 @@
+config BR2_PACKAGE_TOON_BUS
+	bool "toon-bus"
+	select BR2_PACKAGE_MOSQUITTO
+	help
+	  libtoonbus: how the ReToon programs share their state and
+	  commands, over the Toon's own MQTT broker (retoon/<name>,
+	  retained JSON). A static library for the other toon-*
+	  packages, and the toon-bus command for scripts
+	  and the web interface; "toon-bus serve" (S42toon-bus)
+	  gives the web interface's browsers the bus over the
+	  websocket /ws.

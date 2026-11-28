@@ -1,0 +1,46 @@
+From: ReToon
+Subject: [PATCH] usb: chipidea: usbmisc: imx27: set up ULPI ports
+
+On the i.MX27 a host port with an external ULPI PHY needs its TLL link
+disabled and its serial interface mode cleared, or the PHY never answers.
+The original 2.6.36 kernel of the Toon 1 (ED2.0) does the same.
+---
+--- a/drivers/usb/chipidea/usbmisc_imx.c	2026-10-17 12:35:25.504825066 +0000
++++ b/drivers/usb/chipidea/usbmisc_imx.c	2026-10-17 12:35:25.508825312 +0000
+@@ -39,6 +39,11 @@
+ #define MX27_H1_PM_BIT			BIT(8)
+ #define MX27_H2_PM_BIT			BIT(16)
+ #define MX27_OTG_PM_BIT			BIT(24)
++#define MX27_OTG_SIC_MASK		GENMASK(30, 29)
++#define MX27_H1_SIC_MASK		GENMASK(14, 13)
++#define MX27_H1_DT_BIT			BIT(4)
++#define MX27_H2_SIC_MASK		GENMASK(22, 21)
++#define MX27_H2_DT_BIT			BIT(5)
+ 
+ #define MX53_USB_OTG_PHY_CTRL_0_OFFSET	0x08
+ #define MX53_USB_OTG_PHY_CTRL_1_OFFSET	0x0c
+@@ -268,6 +273,24 @@
+ 		val = readl(usbmisc->base) | val;
+ 	else
+ 		val = readl(usbmisc->base) & ~val;
++	if (data->ulpi) {
++		/*
++		 * External ULPI PHY: the serial interface mode does not apply,
++		 * and the host ports must not use their internal TLL link
++		 * (otherwise the PHY on the pins never answers).
++		 */
++		switch (data->index) {
++		case 0:
++			val &= ~MX27_OTG_SIC_MASK;
++			break;
++		case 1:
++			val = (val & ~MX27_H1_SIC_MASK) | MX27_H1_DT_BIT;
++			break;
++		case 2:
++			val = (val & ~MX27_H2_SIC_MASK) | MX27_H2_DT_BIT;
++			break;
++		}
++	}
+ 	writel(val, usbmisc->base);
+ 	spin_unlock_irqrestore(&usbmisc->lock, flags);
+ 

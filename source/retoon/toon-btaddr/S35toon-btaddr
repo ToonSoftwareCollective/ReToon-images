@@ -1,0 +1,16 @@
+#!/bin/sh
+# Bluetooth address = WiFi MAC + 1, the usual scheme for this combo module.
+# Runs before bluetoothd so the controller is configured when it starts.
+case "$1" in
+  start)
+	i=0
+	while [ $i -lt 20 ] && { [ ! -d /sys/class/bluetooth/hci0 ] || [ ! -e /sys/class/net/wlan0/address ]; }; do
+		sleep 0.5; i=$((i + 1))
+	done
+	[ -d /sys/class/bluetooth/hci0 ] && [ -e /sys/class/net/wlan0/address ] || exit 0
+	mac=$(cat /sys/class/net/wlan0/address)
+	last=$(( (0x${mac##*:} + 1) & 0xff ))
+	toon-btaddr 0 "$(printf '%s:%02x' "${mac%:*}" $last)"
+	;;
+esac
+exit 0

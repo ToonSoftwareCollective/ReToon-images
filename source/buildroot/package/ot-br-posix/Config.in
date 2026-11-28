@@ -1,0 +1,17 @@
+config BR2_PACKAGE_OT_BR_POSIX
+	bool "ot-br-posix"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_7 # C++17
+	help
+	  OpenThread Border Router (otbr-agent and ot-ctl), for the
+	  Toon 2's GP711 radio through gp711-rcpd. Built with
+	  OpenThread's own mDNS and the REST API for Home Assistant's
+	  OpenThread Border Router integration. Started by
+	  S62toon-thread when the radio is set to Thread.
+
+	  https://github.com/openthread/ot-br-posix
+
+comment "ot-br-posix needs a toolchain w/ C++, threads, gcc >= 7"
+	depends on !BR2_INSTALL_LIBSTDCPP || !BR2_TOOLCHAIN_HAS_THREADS || \
+		!BR2_TOOLCHAIN_GCC_AT_LEAST_7

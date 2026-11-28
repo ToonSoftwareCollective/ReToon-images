@@ -1,0 +1,12 @@
+#!/bin/sh
+case "$1" in
+  start)
+    modprobe ens210 2>/dev/null
+    # The light sensor sits behind the front window and sees little light:
+    # run it at the highest gain.
+    for d in /sys/bus/i2c/devices/3-0029/iio:device*; do
+      [ -e "$d/in_intensity_scale" ] && echo 0.010000 > "$d/in_intensity_scale"
+    done
+    ;;
+esac
+exit 0

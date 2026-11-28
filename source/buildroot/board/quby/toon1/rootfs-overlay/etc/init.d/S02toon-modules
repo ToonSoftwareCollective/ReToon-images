@@ -1,0 +1,38 @@
+#!/bin/sh
+# Drivers that are modules to keep the kernel small enough for its 3 MiB
+# flash partition. Nothing loads modules by itself here, so do it now.
+case "$1" in
+  start)
+	# No hotplug loading here. The WiFi stick (a Toon 1 has one of three
+	# kinds) and what is in the USB port at start: the driver its USB id
+	# asks for (modules.alias), so only the WiFi driver that is needed. If
+	# none got loaded (the stick came up late, or is not known), all three.
+	for a in $(cat /sys/bus/usb/devices/*:*/modalias 2>/dev/null); do
+		modprobe -q "$a"
+	done
+	if [ ! -d /sys/module/rt2800usb ] && [ ! -d /sys/module/mwifiex_usb ] && [ ! -d /sys/module/r92su ]; then
+		echo "S02toon-modules: no WiFi stick recognised, loading all WiFi drivers" >&2
+		wifi="rt2800usb mwifiex_usb r92su"
+	fi
+	# The Realtek driver (r92su) encrypts in software: the kernel's AES-CCM
+	# has to be there before it connects, and nothing loads it by itself.
+	if [ -n "$wifi" ] || [ -d /sys/module/r92su ]; then
+		wifi="$wifi aes_generic ctr ccm"
+	fi
+	for m in ipv6 $wifi usb-storage sd_mod vfat exfat nls_cp437 \
+		 nls_utf8 cdc-acm ftdi_sio cp210x ch341; do
+		modprobe -q $m || echo "S02toon-modules: no $m" >&2
+	done
+	# The Marvell 88W8801 stick (1286:2049/204a) is called mlan0 by its
+	# driver; the rest of the system knows the WiFi as wlan0. It shows up
+	# once its firmware is loaded, so wait for it a little.
+	if grep -qx 1286 /sys/bus/usb/devices/*/idVendor 2>/dev/null; then
+		i=0
+		while [ ! -e /sys/class/net/mlan0 ] && [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 20 ]; do
+			sleep 0.5; i=$((i + 1))
+		done
+		[ -e /sys/class/net/mlan0 ] && ip link set mlan0 name wlan0
+	fi
+	;;
+esac
+exit 0

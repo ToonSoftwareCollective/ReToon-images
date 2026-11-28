@@ -1,0 +1,30 @@
+#!/bin/sh
+# toon-bus serve: the bus for the web interface's browsers (lighttpd passes
+# the websocket /ws on to /run/toon/bus-ws.sock). Started again when it stops.
+PID=/var/run/toon-bus-serve.pid		# the loop
+SPID=/var/run/toon-bus-serve.child	# toon-bus serve itself
+KEEP=/run/toon/bus-serve.keep
+
+case "$1" in
+  start)
+	mkdir -p /run/toon
+	[ -f $KEEP ] && [ -f $PID ] && kill -0 "$(cat $PID)" 2>/dev/null && exit 0
+	touch $KEEP
+	start-stop-daemon -S -q -b -m -p $PID -x /bin/sh -- -c "
+		while [ -e $KEEP ]; do
+			/usr/bin/toon-bus serve & echo \$! > $SPID; wait \$!
+			[ -e $KEEP ] && logger -t toon-bus 'serve stopped, starting it again' && sleep 2
+		done"
+	;;
+  stop)
+	rm -f $KEEP
+	start-stop-daemon -K -q -p $PID
+	rm -f $PID
+	[ -f $SPID ] && kill "$(cat $SPID)" 2>/dev/null
+	rm -f $SPID
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

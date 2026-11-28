@@ -1,0 +1,660 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReToon</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="style.css?v=44">
+</head>
+<body>
+<header>
+  <h1>ReToon <small id="hostname" translate="no"></small></h1>
+  <nav>
+    <button data-tab="overview" class="on">Overview</button>
+    <button data-tab="screen">Screen</button>
+    <button data-tab="thermostat">Thermostat</button>
+    <button data-tab="connections">Connections</button>
+    <button data-tab="apps">Apps</button>
+    <button data-tab="system">System</button>
+  </nav>
+  <span id="msg"></span>
+  <div id="savebar" hidden>
+    <button id="revert" disabled>Undo changes</button>
+    <button id="save" class="primary" disabled>Send to ReToon</button>
+  </div>
+  <a id="help" href="https://github.com/ToonSoftwareCollective/ReToon-images/blob/main/docs/index.md"
+     target="_blank" rel="noopener" title="How to use ReToon (in English)">Help</a>
+  <select id="lang" title="Language" translate="no">
+    <option value="nl">Nederlands</option>
+    <option value="en">English</option>
+  </select>
+</header>
+
+<main>
+<section id="tab-overview">
+  <div id="update-banner" class="card banner" hidden>
+    <span id="update-banner-text"></span>
+    <button type="button" data-go="system">What's new</button>
+  </div>
+  <div id="tiles" class="tiles"></div>
+  <div class="cards">
+    <div id="getting-started" class="card" hidden>
+      <h2>Getting started</h2>
+      <p class="hint">A few steps to a ReToon that runs on its own.</p>
+      <div id="steps"></div>
+      <div class="row"><button type="button" class="ghost" id="steps-hide">Hide this list</button></div>
+    </div>
+    <div class="card">
+      <h2>Right now</h2>
+      <table id="now"></table>
+    </div>
+  </div>
+</section>
+
+<section id="tab-screen" hidden>
+  <div class="subnav" id="sc-nav">
+    <button type="button" data-sub="pages">Pages</button>
+    <button type="button" data-sub="bright">Brightness</button>
+    <button type="button" data-sub="other">Other</button>
+  </div>
+  <div class="sc-page" data-page="pages">
+  <div class="cols">
+    <div class="col" id="col-views">
+      <h2>Pages</h2>
+      <ul id="views" class="list"></ul>
+      <button id="add-view">+ Page</button>
+      <div id="view-props" class="props"></div>
+      <div class="props">
+        <button type="button" id="show-import" class="wide-btn">Copy pages from Home Assistant…</button>
+      </div>
+    </div>
+    <div class="col" id="col-cards">
+      <h2 id="cards-title">Cards</h2>
+      <p class="hint">Drag a card to any free place, or its corner to make it larger or smaller. Click a card to change it, or an empty cell to add one there. The size is columns × rows of the page's 12 columns.</p>
+      <p class="hint"><span class="fold-key"></span> The Toon's screen ends at this line; what is below it is seen by scrolling on the Toon.</p>
+      <div id="sections"></div>
+      <button id="add-section">+ Card</button>
+    </div>
+    <div class="col" id="col-preview">
+      <h2>On the ReToon now</h2>
+      <canvas id="screen" width="1024" height="600" title="Click to tap on the ReToon"></canvas>
+      <p class="hint">The ReToon's real screen; click in it to tap. Your changes appear after <b>Send to ReToon</b>
+      at the top.</p>
+      <button id="refresh">Refresh</button>
+    </div>
+  </div>
+
+  <div id="import-box" class="card import" hidden>
+    <h2>Copy pages from Home Assistant</h2>
+    <p class="hint">Pick one of your Home Assistant dashboards and choose which of its pages to copy. Copies are
+    yours to change afterwards; nothing is changed in Home Assistant.</p>
+    <div class="row"><button id="load-dashboards">Show my dashboards</button>
+    <button type="button" class="ghost" id="hide-import">Close</button></div>
+    <ul id="ha-dashboards" class="list"></ul>
+    <div id="import-views"></div>
+  </div>
+  </div>
+
+  <div class="sc-page" data-page="bright">
+  <div class="cards">
+    <form id="f-ui" class="card">
+      <h2>Brightness</h2>
+      <label>Normal brightness (%) <input name="brightness" inputmode="numeric" placeholder="80"></label>
+      <label>Dim after (seconds, 0 = never) <input name="dim_after" inputmode="numeric" placeholder="0"></label>
+      <label>Dimmed brightness (%) <input name="dim_level" inputmode="numeric" placeholder="10"></label>
+      <label class="check"><input type="checkbox" name="dim_grey">Grey instead of colour while dimmed</label>
+      <button class="primary" type="submit">Save</button>
+    </form>
+    <form id="f-off" class="card">
+      <h2>Screen off at night</h2>
+      <p class="hint">Instead of dimming, the screen goes off after the dim time (half a minute when it does not dim). A touch wakes it.</p>
+      <label class="check"><input type="checkbox" name="sleep_off">Screen off while the thermostat is on Sleep</label>
+      <label>Screen off from <input name="off_from" type="time"></label>
+      <label>until <input name="off_to" type="time"></label>
+      <button class="primary" type="submit">Save</button>
+    </form>
+  </div>
+  </div>
+
+  <div class="sc-page" data-page="other">
+  <div class="cards">
+    <form id="f-home" class="card">
+      <h2>Page behaviour</h2>
+      <label class="check"><input type="checkbox" name="home_auto">Go back to the home page when the screen is not touched</label>
+      <label>Go back after (seconds) <input name="home_after" inputmode="numeric" placeholder="10"></label>
+      <label class="check"><input type="checkbox" name="page_anim">Slide the pages when swiping</label>
+      <button class="primary" type="submit">Save</button>
+    </form>
+    <div class="card">
+      <h2>Touch screen</h2>
+      <p class="hint">When taps land next to where you press: the Toon's screen shows four crosses to tap. The new calibration is only kept when you then tap Keep.</p>
+      <div class="row"><button id="touch-cal" class="primary">Calibrate on the Toon</button><button id="touch-reset" class="ghost">Back to the standard calibration</button></div>
+    </div>
+    <div class="card">
+      <h2>Notifications</h2>
+      <p class="hint">Home Assistant, apps and scripts can show a message on the Toon, with a sound. A short message shows at the top and goes by itself; one with buttons or an alert stays in the middle until it is answered. See the documentation (MQTT) for how to send one.</p>
+      <div class="row"><button id="note-banner" class="ghost">Try a message</button><button id="note-popup" class="ghost">Try one with buttons</button></div>
+    </div>
+    <div class="card">
+      <h2>Standard pages</h2>
+      <p class="hint">Replaces all your pages with the ones a new ReToon starts with.</p>
+      <button id="reset-dash" class="danger">Put back the standard pages</button>
+    </div>
+  </div>
+  </div>
+</section>
+
+<section id="tab-thermostat" hidden>
+  <div class="subnav" id="th-nav">
+    <button type="button" data-sub="main">Thermostat</button>
+    <button type="button" data-sub="week">Week program</button>
+    <button type="button" data-sub="water" id="th-nav-water" hidden>Hot water</button>
+    <button type="button" data-sub="cool" id="th-nav-cool" hidden>Cooling</button>
+    <button type="button" data-sub="boiler">Installation</button>
+  </div>
+  <div class="th-page" data-page="main">
+    <div class="cards">
+      <div class="card">
+        <h2>Thermostat</h2>
+        <div id="th-state" class="state"></div>
+        <label class="check"><input type="checkbox" id="th-hvac">Thermostat on</label>
+        <button type="button" id="th-resume" hidden>Back to the program now</button>
+        <p class="hint">Off still protects against frost.</p>
+      </div>
+      <div class="card">
+        <h2>Presets</h2>
+        <table class="presets">
+          <tr><th></th><th>Heating</th><th class="th-cool" hidden>Cooling</th></tr>
+          <tr><td>Comfort</td><td><input id="th-p-comfort" type="number" step="0.5" min="6" max="30"></td><td class="th-cool" hidden><input id="th-c-comfort" type="number" step="0.5" min="6" max="30"></td></tr>
+          <tr><td>Home</td><td><input id="th-p-home" type="number" step="0.5" min="6" max="30"></td><td class="th-cool" hidden><input id="th-c-home" type="number" step="0.5" min="6" max="30"></td></tr>
+          <tr><td>Sleep</td><td><input id="th-p-sleep" type="number" step="0.5" min="6" max="30"></td><td class="th-cool" hidden><input id="th-c-sleep" type="number" step="0.5" min="6" max="30"></td></tr>
+          <tr><td>Away</td><td><input id="th-p-away" type="number" step="0.5" min="6" max="30"></td><td class="th-cool" hidden><input id="th-c-away" type="number" step="0.5" min="6" max="30"></td></tr>
+        </table>
+      </div>
+      <div class="card">
+        <h2>Temperature sensors</h2>
+        <label class="check"><input type="checkbox" id="th-own">The ReToon's own sensor</label>
+        <label>Correction of the ReToon's own sensor (°C) <input id="th-offset" type="number" min="-5" max="5" step="0.1"></label>
+        <p class="hint" id="th-offset-now"></p>
+        <label>Add a sensor from Home Assistant or MQTT</label>
+        <div id="th-pick"></div>
+        <div id="th-sensors" class="chips"></div>
+        <details><summary>How the sensors are used</summary>
+          <p class="hint">The thermostat works with the average of the sensors chosen here. If none of the others
+          answers, it uses the ReToon's own sensor.</p></details>
+      </div>
+    </div>
+  </div>
+  <div class="th-page" data-page="week">
+    <div class="card">
+      <label class="check"><input type="checkbox" id="th-program">Follow the week program</label>
+      <p class="hint">A preset or temperature chosen by hand holds until the next step of the program.</p>
+      <div id="th-days" class="days"></div>
+    </div>
+  </div>
+  <div class="th-page" data-page="water">
+    <div class="card" id="hw-card" hidden>
+      <div id="hw-state" class="state"></div>
+      <div class="fields">
+        <label>Temperature (°C) <input id="hw-set" type="number" step="1" min="30" max="80"></label>
+      </div>
+      <p class="hint">Leave this empty to keep the installation's own setting.</p>
+      <label class="check"><input type="checkbox" id="hw-keep">Keep the tap water warm</label>
+      <p class="hint">Off: the boiler does not keep its tap water at temperature, and heats it only when a tap opens (with a combi boiler: a little longer until the water is warm). Not every boiler supports this; with some, off means no hot water at all.</p>
+      <label class="check"><input type="checkbox" id="hw-program">Follow the schedule</label>
+      <div id="hw-week" hidden>
+        <p class="hint">Each step sets the temperature until the next step.</p>
+        <div id="hw-days" class="days"></div>
+      </div>
+    </div>
+  </div>
+  <div class="th-page" data-page="cool">
+    <div class="card" id="cool-card" hidden>
+      <div id="cool-state" class="state"></div>
+      <label class="check"><input type="checkbox" id="cool-on">Use cooling</label>
+      <div id="cool-more" hidden>
+        <div class="fields">
+          <label>Heating or cooling <select id="cool-mode">
+            <option value="heat">Heating</option><option value="cool">Cooling</option>
+            <option value="auto" id="cool-auto">Automatic, by the outside temperature</option></select></label>
+        </div>
+        <p class="hint" id="cool-hint"></p>
+        <div id="cool-auto-box" hidden>
+          <div class="fields two-up">
+            <label>Start cooling above outside (°C) <input id="cool-above" type="number" step="0.5" min="10" max="40"></label>
+            <label>Back to heating below outside (°C) <input id="heat-below" type="number" step="0.5" min="0" max="30"></label>
+          </div>
+          <p class="hint">It switches after half an hour past the limit.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="th-page" data-page="boiler">
+    <div class="cards masonry">
+      <div class="card" id="th-connection" data-col="1">
+        <h2>Connection</h2>
+        <div id="th-conn" class="state"></div>
+        <label class="check"><input type="radio" name="boiler-via" value="cable" id="via-cable">Wired: the boiler module</label>
+        <label class="check"><input type="radio" name="boiler-via" value="esp" id="via-esp">Wireless: OpenTherm over WiFi (ESPHome)</label>
+        <label class="check"><input type="radio" name="boiler-via" value="external" id="via-external">External: through Home Assistant</label>
+        <label class="check" id="th-external-row"><input type="checkbox" id="th-external">Also cool with an external
+        device (airco)</label>
+        <p class="hint">Next to heating that cannot cool (on/off, or OpenTherm without cooling): "Cool request" in Home Assistant
+        follows the thermostat, so an automation can switch an airco; the heating is then just not asked for heat.
+        Switch cooling on under Cooling.</p>
+        <div id="via-cable-box">
+          <div class="row"><button type="button" id="th-ot" class="primary">Use OpenTherm</button>
+          <button type="button" id="th-onoff" class="ghost">Use the on/off contact</button></div>
+          <details><summary>How this works</summary>
+            <p class="hint">Use OpenTherm looks for OpenTherm (about 5 seconds); without it the on/off contact stays in use. Once
+            OpenTherm has worked on this Toon it stays OpenTherm: when the installation stops answering, the Toon keeps
+            the OpenTherm line going and keeps trying, and shows that it does not answer. Only you switch to the on/off
+            contact, here.</p></details>
+        </div>
+        <div id="via-esp-box" hidden>
+          <div id="esp-state" class="state" hidden></div>
+          <p class="hint">An ESP32 or ESP8266 with an OpenTherm adapter at the boiler or heat pump, running ESPHome, instead of the
+          boiler module and its cable. The Toon keeps doing the thermostat work and reaches the ESP over WiFi,
+          encrypted. Fill in the board and the adapter's pins, choose Use this ESP, and install the configuration that
+          appears below with ESPHome.</p>
+          <label>Board <select id="esp-board"><option value="esp32">ESP32 (esp32dev)</option>
+          <option value="esp8266">ESP8266 (Wemos D1 mini)</option></select></label>
+          <label>Device name <input id="esp-name" maxlength="31" autocomplete="off" spellcheck="false"></label>
+          <label>in_pin <input id="esp-in" maxlength="6" autocomplete="off" placeholder="GPIO4"></label>
+          <label>out_pin <input id="esp-out" maxlength="6" autocomplete="off" placeholder="GPIO5"></label>
+          <p class="hint" data-help-for="esp-in">Fill in the pins as your adapter's description gives them for ESPHome (in_pin and out_pin).</p>
+          <label class="check"><input type="checkbox" id="esp-1w">The module has a 1-wire temperature sensor</label>
+          <label id="esp-1w-row" hidden>Pin of the temperature sensor <input id="esp-1w-pin" maxlength="6" autocomplete="off"></label>
+          <p class="hint">Some adapters have a small temperature sensor (DS18B20). The module usually sits next to the installation, so
+          it is no room temperature: it comes in Home Assistant as "OpenTherm module temperature", and can be chosen
+          there like any other sensor.</p>
+          <label>Address (empty: the device name.local) <input id="esp-host" autocomplete="off" spellcheck="false"></label>
+            <div class="row"><button type="button" id="esp-save" class="primary">Use this ESP</button></div>
+          <div id="esp-yaml-box" hidden>
+            <p class="hint">The configuration for ESPHome: make a new device in ESPHome (the Home Assistant add-on or
+            ESPHome on a computer), replace its configuration by this one and install it, the first time over USB. The
+            WiFi name and password come from ESPHome's secrets (wifi_ssid and wifi_password). It holds this Toon's key
+            for the ESP: keep it to yourself.</p>
+            <textarea id="esp-yaml" rows="16" readonly spellcheck="false"></textarea>
+            <div class="row"><button type="button" id="esp-copy" class="ghost">Copy</button>
+            <button type="button" id="esp-download" class="ghost">Download</button></div>
+          </div>
+        </div>
+        <div id="via-external-box" hidden>
+          <p class="hint">Nothing connected to the Toon: "Heat request" and "Cool request" in Home Assistant (and on the screen) follow
+          the thermostat, and an automation there switches a heater, a heat pump or an airco. The thermostat still
+          decides when to heat or cool. Switch cooling on under Cooling.</p>
+        </div>
+      </div>
+      <div class="card" data-col="2">
+        <h2>Smart heating</h2>
+        <label class="check"><input type="checkbox" id="th-preheat">Start early, so a warmer step of the program
+        is reached on time</label>
+        <label>Start at most this many minutes early <input id="th-maxpre" type="number" min="0" max="360" step="10"></label>
+        <label class="check"><input type="checkbox" id="th-mod">Choose the flow temperature from what the house needs (OpenTherm)</label>
+        <label>Start heating above (°C) <input id="th-start" type="number" min="20" max="40" step="1"></label>
+        <p class="hint">Heating starts when the flow temperature asked for is above this. Standard 30; lower it (to 25) for floor
+        heating or a heat pump. An installation that cannot run that low may switch on and off often.</p>
+        <label>Otherwise, this flow temperature (°C) <input id="th-flow" type="number" min="20" max="80" step="1"
+        placeholder="auto"></label>
+        <p class="hint">With the box above off: the installation heats with this flow temperature, and the thermostat only switches
+        the heating on and off. Empty: it follows how far the room is from the target.</p>
+        <label class="check"><input type="checkbox" id="th-ignored">OpenTherm, but the heat source does not follow the flow temperature asked for (district heating)</label>
+        <p class="hint">Switch this on when your heating is connected over OpenTherm but the flow temperature cannot be set, as with
+        most district heating sets: hot water arrives whatever the thermostat asks for. You can tell by the room
+        temperature: every time the heating stops, also close to the target, the room keeps getting warmer for a long
+        while (it overshoots). With this on, the thermostat switches the heat on in short pulses, as for an on/off
+        boiler, and learns how the house warms up that way. The other OpenTherm values (hot water, faults) stay. Leave
+        it off for an ordinary gas boiler or a heat pump: those do follow the temperature.</p>
+        <label>Warm up at most (°C an hour) <input id="th-rate" type="number" min="0.5" max="10" step="0.5"></label>
+        <p class="hint">Lower this for a slow heating system such as floor heating.</p>
+        <label>On/off heating or district heating: cycle time (minutes) <input id="th-period" type="number" min="10" max="30" step="1"></label>
+        <p class="hint">On/off heating is either fully on or off. So the thermostat switches it on for part of every cycle, as much as
+        the house needs: for example 4 of the 20 minutes when the room is nearly warm enough, the whole cycle when it
+        is still cold. When the house cools faster than expected, it comes on again within the same cycle. Shorter: a
+        steadier temperature, but it starts more often. Longer: fewer starts, for a slow system such as floor heating.
+        Standard 20.</p>
+        <label>Frost protection below (°C) <input id="th-frost" type="number" min="3" max="12" step="0.5"></label>
+        <p class="hint" id="th-learned"></p>
+      </div>
+      <div class="card" data-col="3">
+        <h2>Maximum flow temperature</h2>
+        <label>Highest flow temperature <select id="th-maxmode">
+          <option value="boiler">The installation's own setting</option>
+          <option value="fixed">Fixed</option>
+          <option value="curve">By the outside temperature</option></select></label>
+        <div id="th-maxfixed">
+          <label>Maximum (°C) <input id="th-maxflow" type="number" min="20" max="80" step="1"></label>
+        </div>
+        <div id="th-maxcurve">
+          <table class="presets">
+            <tr><th>Outside (°C)</th><th>Flow at most (°C)</th></tr>
+            <tr><td><input id="cv-cold" type="number" min="-30" max="30" step="1"></td>
+              <td><input id="cv-cold-flow" type="number" min="20" max="80" step="1"></td></tr>
+            <tr><td><input id="cv-warm" type="number" min="-30" max="30" step="1"></td>
+              <td><input id="cv-warm-flow" type="number" min="20" max="80" step="1"></td></tr>
+          </table>
+          <p class="hint" data-help-for="th-maxmode">Between these two points the maximum follows a straight line; colder or warmer, it stays at
+          the end value. Without an outside temperature the cold value is used.</p>
+        </div>
+        <p class="hint" data-help-for="th-maxmode">For OpenTherm, for example floor heating without its own pump: the flow never gets warmer than this, and never
+        warmer than the installation's own maximum. At least 2 °C above where heating starts (Smart heating).</p>
+        <div id="th-maxnow" class="state"></div>
+      </div>
+      <div class="card" data-col="3">
+        <h2>Outside temperature</h2>
+        <div id="th-outstate" class="state"></div>
+        <div class="fields">
+          <label>Outside temperature sensor</label>
+          <div id="th-out"></div>
+          <div id="th-out-chosen" class="chips"></div>
+        </div>
+        <p class="hint">Only used when the installation does not give an outside temperature over OpenTherm. For the maximum flow
+        temperature by the outside temperature, and for switching to cooling automatically.</p>
+      </div>
+      <div class="card" data-col="3">
+        <h2>Logs</h2>
+        <label class="check"><input type="checkbox" id="th-log">Keep a log of thermostat changes</label>
+        <p class="hint">A line for each change of the target, preset, hold or week program, with where it came from:
+        the screen, the web interface, Home Assistant, an app, or the week program itself. Kept on the Toon, also
+        over a restart. Off by default.</p>
+        <div class="row"><button type="button" class="ghost" id="th-log-show">Show the log</button></div>
+        <pre id="th-log-text" translate="no" hidden></pre>
+        <label class="check"><input type="checkbox" id="th-measure">Keep a measurement log (a line a minute)</label>
+        <p class="hint">For seeing how the thermostat works in your house, or to send to the developers: each minute the room and
+        target temperature, the flow temperature asked for, whether it heats, what the installation reports (flow and
+        return temperature, modulation, flame), the outside temperature and what the thermostat has learned. The last
+        2 to 3 days, as a CSV file for Excel; written every 10 minutes, so the last minutes may not be in it yet. Off
+        by default.</p>
+        <div class="row"><button type="button" class="ghost" id="th-measure-get">Download the measurements</button></div>
+      </div>
+    </div>
+  </div>
+  <div class="row sticky-save"><button class="primary" type="button" id="th-save" disabled>Save thermostat settings</button>
+  <span class="hint" id="th-dirty"></span></div>
+</section>
+
+<section id="tab-connections" hidden>
+  <div class="cards masonry">
+    <form id="f-ha" class="card">
+      <h2>Home Assistant</h2>
+      <div id="ha-state" class="state"></div>
+      <label>Address <input name="url" placeholder="http://homeassistant.local:8123"></label>
+      <div class="row"><button class="primary" type="submit">Log in to Home Assistant</button>
+      <button type="button" id="ha-logout">Disconnect</button></div>
+      <details><summary>Use a token you made yourself</summary>
+        <p class="hint">Paste a long-lived access token you made in your Home Assistant profile.</p>
+        <label>Token <input name="token" autocomplete="off"></label>
+        <button type="button" id="ha-token-save">Save token</button>
+      </details>
+      <details><summary>https and certificates</summary>
+        <label class="check"><input type="checkbox" name="verify">Check the certificate (https with a certificate
+        from a public authority only)</label>
+      </details>
+      <details><summary>What logging in does</summary>
+        <p class="hint">Logging in makes an access token for this ReToon in Home Assistant. It stays on the ReToon
+        and you can withdraw it in your Home Assistant profile. Both http:// and https:// addresses work.</p>
+      </details>
+    </form>
+
+    <div class="card">
+      <form id="f-mqtt">
+        <h2>MQTT</h2>
+        <div id="mqtt-state" class="state"><b>Checking…</b></div>
+        <label>Broker <input name="host" placeholder="192.168.1.10"></label>
+        <div class="two">
+          <label>User name <input name="username" autocomplete="off"></label>
+          <label>Password <input name="password" type="password" autocomplete="new-password"></label>
+        </div>
+        <details><summary>Port and discovery prefix</summary>
+          <div class="two">
+            <label>Port <input name="port" placeholder="1883" inputmode="numeric"></label>
+            <label>Discovery prefix <input name="discovery_prefix" placeholder="homeassistant"></label>
+          </div>
+        </details>
+        <button class="primary" type="submit">Save</button>
+        <details><summary>What MQTT does here</summary>
+          <p class="hint">Publishes the ReToon's sensors, heating and thermostat to Home Assistant (auto discovery). Devices that
+          announce themselves on this broker (zigbee2mqtt, Tasmota and others) can be put on your pages too: look for
+          "(MQTT)" when you add a card.</p>
+        </details>
+      </form>
+      <form id="f-topics" class="sub">
+        <h3>Your own MQTT values</h3>
+        <p class="hint">For topics that do not announce themselves. Each one becomes a value you can put on a page.</p>
+        <div id="topics"></div>
+        <div class="row"><button type="button" id="topic-add">+ Value</button>
+        <button class="primary" type="submit">Save values</button></div>
+      </form>
+      <form id="f-broker" class="sub">
+        <h3>This ReToon's own broker</h3>
+        <div id="broker-state" class="state"></div>
+        <label class="check"><input type="checkbox" name="lan">Open it to devices on your network</label>
+        <div class="two">
+          <label>User name <input name="username" autocomplete="off"></label>
+          <label>Password <input name="password" type="password" autocomplete="new-password"></label>
+        </div>
+        <button class="primary" type="submit">Save</button>
+        <details><summary>What it is for</summary>
+          <p class="hint">The ReToon has its own MQTT broker. The programs and apps on the ReToon use it among
+          themselves; on its own it cannot be reached from the network. Opened to the network, your devices and
+          scripts can use it too, with the user name and password above, on port 1883. The ReToon's values are under
+          retoon/ (for example retoon/climate), and retoon/boiler/set takes thermostat commands such as
+          "target 20.5". Without a broker filled in above, the screen shows the devices that announce themselves on
+          this one.</p>
+        </details>
+      </form>
+    </div>
+
+    <form id="f-zwave" class="card">
+      <h2>Z-Wave</h2>
+      <div id="zwave-state" class="state"></div>
+      <label class="check"><input type="checkbox" name="remote">Let Z-Wave JS in Home Assistant use the Z-Wave
+      radio of this ReToon</label>
+      <label>Only from this address (empty = anyone on your network) <input name="allow"
+      placeholder="address of Home Assistant" inputmode="decimal"></label>
+      <h3 id="meters-head">Meter adapters</h3>
+      <div id="zwave-meters"></div>
+      <button class="primary" type="submit">Save</button>
+      <details><summary>How to use this in Home Assistant</summary>
+        <p class="hint">In Home Assistant, add the Z-Wave integration (Z-Wave JS) and give it the address shown
+        above instead of a USB stick. Devices that are already in this ReToon's Z-Wave network stay in it. The
+        connection has no password and is not encrypted: fill in the address of Home Assistant so nothing else
+        can use it.</p>
+      </details>
+      <details id="zwave-keys" hidden><summary>Network keys of the original software</summary>
+        <p class="hint">Devices that were added with encryption only talk to Z-Wave JS when it has these keys:
+        fill them in under the Z-Wave integration's security keys (S0 legacy, S2 unauthenticated, authenticated,
+        access control).</p>
+        <pre id="zwave-keys-list" translate="no"></pre>
+      </details>
+    </form>
+
+    <form id="f-esphome" class="card">
+      <h2>Bluetooth proxy</h2>
+      <div id="esphome-state" class="state"></div>
+      <label class="check"><input type="checkbox" name="on">Let Home Assistant use the Bluetooth radio of this
+      ReToon</label>
+      <label>Only from this address (empty = anyone on your network) <input name="allow"
+      placeholder="address of Home Assistant" inputmode="decimal"></label>
+      <button class="primary" type="submit">Save</button>
+      <details><summary>How to use this in Home Assistant</summary>
+        <p class="hint">The ReToon presents itself to Home Assistant as an ESPHome Bluetooth proxy. Home Assistant
+        finds it by itself: under Settings, Devices &amp; services it appears as a discovered ESPHome device; press
+        Add. Bluetooth devices near this ReToon (thermometers, plant sensors, trackers, Shelly BLU, SwitchBot...)
+        then work in Home Assistant as if they were next to it. Scanning only runs while Home Assistant is
+        connected. The connection has no password and is not encrypted: fill in the address of Home Assistant so
+        nothing else can use it.</p>
+      </details>
+    </form>
+
+    <form id="f-radio" class="card">
+      <h2>Zigbee or Thread</h2>
+      <div id="radio-state" class="state"></div>
+      <p class="hint">The ReToon has one radio for Zigbee and Thread; it does one of the two.</p>
+      <label class="check"><input type="radio" name="mode" value="zigbee">Zigbee, for zigbee2mqtt</label>
+      <label class="check"><input type="radio" name="mode" value="thread">Thread border router, for Matter
+      devices</label>
+      <label class="check"><input type="radio" name="mode" value="off">Off</label>
+      <button class="primary" type="submit">Save</button>
+      <details data-mode="zigbee"><summary>How to use this in zigbee2mqtt</summary>
+        <p class="hint">In zigbee2mqtt, set the adapter to "zoh" and the port to the address shown above.</p>
+      </details>
+      <details data-mode="thread"><summary>How to use this in Home Assistant</summary>
+        <p class="hint">The ReToon starts a Thread network of its own. In Home Assistant, add the OpenThread Border
+        Router integration with the address shown above, then make this network the preferred one under Thread.
+        Matter devices that use Thread can then be added in Home Assistant.</p>
+      </details>
+      <details data-mode="thread"><summary>Join another Thread network</summary>
+        <label>Its dataset (hex, from the other border router)
+        <textarea name="tlv" rows="3" autocomplete="off" spellcheck="false"></textarea></label>
+        <div class="row">
+          <button type="button" id="thread-join">Join this network</button>
+          <button type="button" id="thread-new">Start a new network</button>
+        </div>
+      </details>
+    </form>
+
+    <div class="card">
+      <h2>WiFi</h2>
+      <div id="wifi-state" class="state"><b>Checking…</b></div>
+      <p class="hint">WiFi is changed on the ReToon's own screen: tap the WiFi icon in the corner. It also appears
+      by itself when the ReToon has no connection.</p>
+    </div>
+  </div>
+</section>
+
+<section id="tab-apps" hidden>
+  <p class="hint">Apps installed on this ReToon and their settings. To show an app on the screen, add an "App" card
+  to a page under Screen.</p>
+  <div class="card">
+    <label class="check"><input type="checkbox" id="apps-auto"> Update apps by themselves</label>
+    <p class="hint" id="apps-auto-hint"></p>
+  </div>
+  <div class="cards" id="apps"></div>
+  <h2 style="margin-top:8px">Available</h2>
+  <p class="hint" id="catalogue-hint">Apps from the ReToon app catalogue. The screen restarts after an app is
+  installed, updated or removed.</p>
+  <div class="cards" id="catalogue"></div>
+</section>
+
+<section id="tab-system" hidden>
+  <div class="cards masonry" data-min="270">
+    <form id="f-name" class="card" data-col="1">
+      <h2>Name of this ReToon</h2>
+      <label>Name on the network <input name="hostname" maxlength="32" pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"></label>
+      <button class="primary" type="submit">Save</button>
+      <details><summary>About the name</summary>
+        <p class="hint">Small letters, digits and "-". The ReToon is then found at https://&lt;name&gt;.local/ and
+        makes a new certificate, so the browser warns once more. Your router shows the new name after the next
+        restart. Empty puts the standard name back.</p>
+      </details>
+    </form>
+
+    <form id="f-boot" class="card" data-col="1">
+      <h2>Starting up</h2>
+      <label class="check"><input type="checkbox" name="autoboot">Always start ReToon</label>
+      <button class="primary" type="submit">Save</button>
+      <p class="hint">While this is off, the next restart starts the original Toon software again, and it stays
+      there: ReToon then has to be started from that system once more. Turn it on once ReToon works the way you
+      want.</p>
+    </form>
+
+    <div class="card" data-col="1">
+      <h2>Factory defaults</h2>
+      <p class="hint">Removes every setting of this ReToon: WiFi, Home Assistant, MQTT, your pages, the thermostat
+      program, the name and both passwords. The ReToon restarts and shows its WiFi screen, as on its first start.
+      The original Toon software is not touched.</p>
+      <button class="danger" type="button" id="factory">Back to factory defaults</button>
+    </div>
+
+    <form id="f-sound" class="card" data-col="2">
+      <h2>Sound</h2>
+      <div id="sound-state" class="state"></div>
+      <label>Volume (%) <input name="volume" type="range" min="0" max="100" step="5"></label>
+      <div class="row"><button type="button" id="sound-test">Play test sound</button>
+      <button class="primary" type="submit">Save</button></div>
+      <details><summary>Sounds from the command line</summary>
+        <p class="hint"><code>toon-sound play file.wav</code>, <code>toon-sound beep</code> and
+        <code>toon-sound tone 440 500</code> play sounds at this volume. The Toon 1 has a small speaker; the Toon 2
+        plays through its buzzer, which sounds thinner and is loudest for high tones.</p>
+      </details>
+    </form>
+
+    <div class="card" data-col="3">
+      <h2>Security</h2>
+      <form id="f-pw">
+        <h3>Login for this web interface</h3>
+        <label>User name <input value="admin" disabled></label>
+        <label>New password <input id="pw-web" name="password" type="password" autocomplete="new-password" required></label>
+        <label>New password again <input name="password2" type="password" autocomplete="new-password" required></label>
+        <button class="primary" type="submit">Change password</button>
+        <p class="hint" data-help-for="pw-web">The password is also shown on the ReToon itself (tap the Home Assistant icon).</p>
+      </form>
+      <form id="f-rootpw" class="sub">
+        <h3>Password for SSH (user root)</h3>
+        <p class="hint" id="rootpw-state"></p>
+        <label>New password <input name="password" type="password" autocomplete="new-password" required></label>
+        <button class="primary" type="submit">Change password</button>
+        <p class="hint">It cannot be read back: if you lose it, the only way to get in again is "Factory defaults"
+        below.</p>
+      </form>
+      <form id="f-web" class="sub">
+        <h3>Encryption</h3>
+        <label class="check"><input type="checkbox" name="http">Also allow plain http (not encrypted)</label>
+        <button class="primary" type="submit">Save</button>
+        <details><summary>About the certificate</summary>
+          <p class="hint">This page runs over https with a certificate this ReToon made itself, so your browser
+          warns once.</p>
+          <p class="hint" id="web-fp" style="word-break:break-all" translate="no"></p>
+        </details>
+      </form>
+    </div>
+
+    <div class="card" data-col="4">
+      <h2>Details</h2>
+      <table id="status"></table>
+    </div>
+
+    <div class="card" data-col="4">
+      <h2>Update and restart</h2>
+      <p class="hint" id="update-text"></p>
+      <pre id="update-notes" translate="no" hidden></pre>
+      <label>Update by itself <select id="update-auto">
+        <option value="off">Never</option>
+        <option value="hourly">Every hour</option>
+        <option value="nightly">Every night (around 3:00)</option>
+        <option value="weekly">Every week (Sunday night)</option>
+      </select></label>
+      <p class="hint">An update that is found is installed, and the ReToon then restarts by itself. The screen says so
+      afterwards.</p>
+      <div class="row">
+        <button type="button" id="update-check">Check for update</button>
+        <button type="button" class="primary" id="update-install" hidden>Install</button>
+        <button type="button" class="danger" id="restart">Restart</button>
+      </div>
+      <details><summary>Where updates come from</summary>
+        <p class="hint">"Check for update" looks for a newer ReToon release (ToonSoftwareCollective/ReToon-images on
+        GitHub) and shows what changed in it. An installed update is used from the next restart.</p>
+      </details>
+    </div>
+  </div>
+</section>
+</main>
+
+<dialog id="dlg">
+  <form method="dialog" id="dlg-form">
+    <h2 id="dlg-title">Card</h2>
+    <div id="dlg-body"></div>
+    <div class="row end">
+      <button value="cancel" type="button" id="dlg-cancel">Cancel</button>
+      <button value="ok" class="primary" type="submit">OK</button>
+    </div>
+  </form>
+</dialog>
+<script src="i18n.js?v=52"></script>
+<script src="toonbus.js?v=52"></script>
+<script src="app.js?v=52"></script>
+</body>
+</html>

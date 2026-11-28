@@ -1,0 +1,25 @@
+#!/bin/sh
+# Full diagnostic dump after all other init scripts have run.
+# Uses the device node directly (LABEL= lookup fails in minimal userspace).
+# rcK calls every init script with "stop" at shutdown; only act at boot.
+[ "$1" = start ] || exit 0
+mkdir -p /mnt/recovery
+mount /dev/mmcblk3p3 /mnt/recovery 2>/dev/null && {
+	LOG=/mnt/recovery/retoon-toon2-bootlog.txt
+	echo "=== S99 reached, $(date) ===" >> "$LOG"
+	echo "--- dmesg ---" >> "$LOG"
+	dmesg >> "$LOG" 2>&1
+	echo "--- lsmod ---" >> "$LOG"
+	lsmod >> "$LOG" 2>&1
+	echo "--- ifconfig -a ---" >> "$LOG"
+	ifconfig -a >> "$LOG" 2>&1
+	echo "--- iw/wpa ---" >> "$LOG"
+	cat /sys/class/net/wlan0/operstate >> "$LOG" 2>&1
+	echo "SUCCESS $(date +%s)" > /mnt/recovery/retoon-toon2-SUCCESS
+	sync
+	umount /mnt/recovery
+}
+
+# NOTE: no auto-reboot anymore. With wifi/SSH coming up we want the OS to
+# stay up and be reachable. One-shot safety is handled by S00 deleting
+# boot.scr, so a reboot returns to the original software.

@@ -1,0 +1,111 @@
+From: ReToon
+Subject: [PATCH] clk: Toon 1 audio codec master clock from GPT1 TOUT
+
+The original software ran GPT1 with TCTL 0x602 (PERCLK1, toggle output,
+restart at compare 0), so TOUT gives PERCLK1/2 to the TLV320AIC3111.
+---
+--- a/drivers/clk/Kconfig	2026-10-25 09:42:37.412942581 +0000
++++ b/drivers/clk/Kconfig	2026-10-25 09:42:37.439944158 +0000
+@@ -450,6 +450,14 @@
+ 	  This driver supports ROHM BD71837, BD71847, BD71850, BD71815
+ 	  and BD71828 PMICs clock gates.
+ 
++config COMMON_CLK_TOON1_MCLK
++	tristate "Quby Toon 1 audio codec master clock (i.MX27 GPT1 TOUT)"
++	depends on SOC_IMX27 || COMPILE_TEST
++	help
++	  The Toon 1's TLV320AIC3111 gets its master clock from the TOUT pin
++	  of GPT1, toggling at every PERCLK1 tick. This sets the timer up
++	  and offers that output as a clock.
++
+ config COMMON_CLK_FIXED_MMIO
+ 	bool "Clock driver for Memory Mapped Fixed values"
+ 	depends on COMMON_CLK && OF
+--- a/drivers/clk/Makefile	2026-10-25 09:42:37.412942581 +0000
++++ b/drivers/clk/Makefile	2026-10-25 09:42:37.439944158 +0000
+@@ -43,6 +43,7 @@
+ obj-$(CONFIG_ARCH_SPARX5)		+= clk-sparx5.o
+ obj-$(CONFIG_COMMON_CLK_EN7523)		+= clk-en7523.o
+ obj-$(CONFIG_COMMON_CLK_FIXED_MMIO)	+= clk-fixed-mmio.o
++obj-$(CONFIG_COMMON_CLK_TOON1_MCLK)	+= clk-toon1-mclk.o
+ obj-$(CONFIG_COMMON_CLK_FSL_FLEXSPI)	+= clk-fsl-flexspi.o
+ obj-$(CONFIG_COMMON_CLK_FSL_SAI)	+= clk-fsl-sai.o
+ obj-$(CONFIG_COMMON_CLK_GEMINI)		+= clk-gemini.o
+--- a/drivers/clk/clk-toon1-mclk.c	1970-01-01 00:00:00.000000000 +0000
++++ b/drivers/clk/clk-toon1-mclk.c	2026-10-25 09:42:37.415942757 +0000
+@@ -0,0 +1,75 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Toon 1: the audio codec's master clock is the TOUT pin of GPT1, which
++ * toggles at every PERCLK1 tick (24 MHz -> 12 MHz), as the original
++ * software set it up. This registers that output as a fixed clock.
++ */
++#include <linux/clk.h>
++#include <linux/clk-provider.h>
++#include <linux/delay.h>
++#include <linux/io.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/platform_device.h>
++
++#define TCTL		0x00
++#define TPRER		0x04
++#define TCMP		0x08
++#define TCTL_TEN	BIT(0)
++#define TCTL_PERCLK1	(1 << 1)
++#define TCTL_FRR	BIT(8)	/* free-run: must stay off (restart at compare) */
++#define TCTL_OM		BIT(9)	/* toggle TOUT on compare */
++#define TCTL_CC		BIT(10)	/* 0x602 | TEN is what the original software wrote */
++#define TCTL_SWR	BIT(15)
++
++static int gptmclk_probe(struct platform_device *pdev)
++{
++	struct device *dev = &pdev->dev;
++	void __iomem *base;
++	struct clk *ipg, *per;
++	struct clk_hw *hw;
++	unsigned long rate;
++	int i;
++
++	base = devm_platform_ioremap_resource(pdev, 0);
++	if (IS_ERR(base))
++		return PTR_ERR(base);
++	ipg = devm_clk_get_enabled(dev, "ipg");
++	if (IS_ERR(ipg))
++		return PTR_ERR(ipg);
++	per = devm_clk_get_enabled(dev, "per");
++	if (IS_ERR(per))
++		return PTR_ERR(per);
++
++	writel(TCTL_SWR, base + TCTL);
++	for (i = 0; i < 100 && (readl(base + TCTL) & TCTL_SWR); i++)
++		udelay(1);
++	writel(0, base + TPRER);
++	writel(0, base + TCMP);
++	writel(TCTL_PERCLK1 | TCTL_OM | TCTL_CC, base + TCTL);
++	writel(TCTL_PERCLK1 | TCTL_OM | TCTL_CC | TCTL_TEN, base + TCTL);
++
++	rate = clk_get_rate(per) / 2;
++	hw = devm_clk_hw_register_fixed_rate(dev, "toon1-mclk", NULL, 0, rate);
++	if (IS_ERR(hw))
++		return PTR_ERR(hw);
++	dev_info(dev, "codec master clock %lu Hz on TOUT\n", rate);
++	return devm_of_clk_add_hw_provider(dev, of_clk_hw_simple_get, hw);
++}
++
++static const struct of_device_id gptmclk_of_match[] = {
++	{ .compatible = "quby,toon1-gpt-mclk" },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, gptmclk_of_match);
++
++static struct platform_driver gptmclk_driver = {
++	.probe = gptmclk_probe,
++	.driver = {
++		.name = "toon1-gpt-mclk",
++		.of_match_table = gptmclk_of_match,
++	},
++};
++module_platform_driver(gptmclk_driver);
++MODULE_DESCRIPTION("Toon 1 GPT1 TOUT as audio codec master clock");
++MODULE_LICENSE("GPL");

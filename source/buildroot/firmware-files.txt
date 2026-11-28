@@ -1,0 +1,1 @@
+8295b3a4e1aa7b41cabca166da2357848fd172203893e94ecb84fe42143f495e  2970  lib/firmware/imx/sdma/sdma-imx6q.bin

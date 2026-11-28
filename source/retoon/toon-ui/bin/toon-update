@@ -1,0 +1,233 @@
+#!/bin/sh
+# Look for a newer ReToon image in the newest release of ReToon-images
+# (ToonSoftwareCollective/ReToon-images) and put it in place.
+#   toon-update check     compare what is published with what is installed
+#   toon-update install   fetch the image, check it and put it in place
+# Progress and result go to /run/toon/update (JSON) for the web page. An
+# installed image is used from the next start; install also makes that next
+# start come back to ReToon once, also when "Always start ReToon" is off.
+# The release has, per Toon model, the image archive (retoon-toon2.tar.gz,
+# retoon-toon1.tar.gz) and the checksums of its files (files-toon2.sha256,
+# files-toon1.sha256). The archive is fetched into /tmp (memory), where a
+# broken download goes on from where it stopped, and unpacked from there
+# onto the data partition (a Toon 1 has no room there for it whole). With
+# too little memory it is unpacked while it comes in, without going on.
+REPO=ToonSoftwareCollective/ReToon-images
+SRC=${TOON_UPDATE_SRC:-https://github.com/$REPO/releases/latest/download}
+OS=/mnt/data/toon-os
+DL=$OS/update
+TMP=/tmp/toon-update
+P3=/tmp/toon-update-p3
+P1=/tmp/toon-update-p1
+STATE=/run/toon/update
+LOCK=/run/toon/update.lock
+FETCH="curl -fsSL --connect-timeout 20 --max-time 900"
+TRIES=10	# downloads of the archive that may break, as long as each gets further
+SLOW=300k	# after a break: some WiFi sticks (the Toon 1's Realtek) cope better
+
+if grep -q "Toon 1" /proc/device-tree/model 2>/dev/null; then
+	BOARD=toon1
+	NEED=14000	# kB free on the data partition: the new system and kernel
+else
+	BOARD=toon2
+	NEED=60000
+fi
+app=""
+notes=""
+
+esc() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | awk 'NR > 1 { printf "\\n" } { printf "%s", $0 }'; }
+state() {	# state, text
+	printf '{"state":"%s","text":"%s","app":"%s","notes":"%s"}\n' \
+		"$1" "$(esc "$2")" "$(esc "$app")" "$(esc "$notes")" > $STATE.tmp
+	mv $STATE.tmp $STATE
+	# run by hand in a terminal: show it there too
+	[ -t 2 ] && echo "$2" >&2
+	return 0
+}
+cleanup() {
+	umount $P3 2>/dev/null
+	umount $P1 2>/dev/null
+	rm -rf $TMP
+	if [ -n "$rw" ]; then
+		rm -rf $DL
+		sync
+		mount -o remount,ro /mnt/data 2>/dev/null
+	fi
+	rmdir $LOCK 2>/dev/null
+}
+fail() {
+	state error "$1"
+	exit 1
+}
+
+mkdir -p /run/toon
+mkdir $LOCK 2>/dev/null || { echo "toon-update is already busy" >&2; exit 1; }
+trap cleanup EXIT
+case "$1" in
+check) state checking "Looking for an update" ;;
+install) state working "Looking for the newest version" ;;
+*) rmdir $LOCK; echo "usage: $0 check|install" >&2; exit 2 ;;
+esac
+
+# what is published: the checksums of the files of the image, and the
+# release's name as the version shown
+mkdir -p $TMP
+$FETCH -o $TMP/files.sha256 "$SRC/files-$BOARD.sha256" ||
+	fail "Could not reach the ReToon images on GitHub. Is this ReToon connected to the internet?"
+$FETCH -o $TMP/release.json "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null || : > $TMP/release.json
+app=$(sed -n 's/^ *"tag_name": *"\([^"]*\)".*/\1/p' $TMP/release.json | head -n 1)
+[ -n "$app" ] || app="(newest)"
+# the release notes: the "What changed" part of the body, as plain text
+notes=$(sed -n 's/^ *"body": *"\(.*\)",*$/\1/p' $TMP/release.json | head -n 1 |
+	sed 's/\\r//g; s/\\n/\n/g; s/\\"/"/g; s/\\\\/\\/g' |
+	sed -n '/^## What changed/,$p' | sed '1d; s/\*\*//g' | sed '/./,$!d')
+FILES=$(sed 's/^[0-9a-f]*  //' $TMP/files.sha256)
+[ -n "$FILES" ] || fail "The list of files of the ReToon image is empty."
+for f in $FILES; do
+	case "$BOARD:$f" in
+	toon2:toon2-zImage|toon2:toon2.dtb|toon2:toon2-initrd.cpio.gz.u-boot) ;;
+	*:rootfs.squashfs|toon2:boot.scr|toon1:uImage-toon1-flash) ;;
+	*) fail "The ReToon image lists a file this ReToon does not know: $f" ;;
+	esac
+done
+
+home_of() {
+	case "$1" in
+	rootfs.squashfs|boot.scr|uImage-toon1-flash) echo "$OS/$1" ;;
+	*) echo "$P3/$1" ;;
+	esac
+}
+sum_of() { sed -n "s/^\([0-9a-f]\{64\}\)  $1\$/\1/p" $TMP/files.sha256; }
+good() {	# path, name
+	[ -f "$1" ] && [ "$(sha256sum "$1" | cut -d ' ' -f 1)" = "$(sum_of "$2")" ]
+}
+# Toon 1: U-Boot starts the kernel from its flash partition, so the kernel
+# goes there as well as into toon-os
+mtd_of() { sed -n "s/^\(mtd[0-9]*\):.*\"$1\"\$/\1/p" /proc/mtd; }
+flash_has() {	# mtd, file: read in pages, then cut to size
+	size=$(wc -c < $2)
+	[ "$(dd if=/dev/$1 bs=2048 count=$(( (size + 2047) / 2048 )) 2>/dev/null |
+	     head -c $size | sha256sum | cut -d ' ' -f 1)" = "$(sha256sum < $2 | cut -d ' ' -f 1)" ]
+}
+
+missing=""
+if [ $BOARD = toon2 ]; then
+	mkdir -p $P3 $P1
+	mount -o ro /dev/mmcblk3p3 $P3 || fail "The third partition cannot be read."
+fi
+for f in $FILES; do
+	good "$(home_of $f)" $f || missing="$missing $f"
+done
+kernel_in_place=1
+if [ $BOARD = toon1 ]; then
+	KERNEL_MTD=$(mtd_of kernel)
+	[ -n "$KERNEL_MTD" ] || fail "The kernel partition of this Toon is not there."
+	good $OS/uImage-toon1-flash uImage-toon1-flash && flash_has $KERNEL_MTD $OS/uImage-toon1-flash ||
+		kernel_in_place=0
+fi
+if [ -z "$missing" ] && [ $kernel_in_place = 1 ]; then
+	state current "ReToon is up to date (version $app)."
+	exit 0
+fi
+if [ "$1" = check ]; then
+	state available "ReToon $app is available."
+	exit 0
+fi
+
+# install: unpack the archive onto the data partition while it comes in,
+# check what is needed, then put it in place
+free=$(df -k /mnt/data | tail -n 1 | awk '{print $4}')
+[ "$free" -gt $NEED ] || fail "Not enough room on the data partition."
+mount -o remount,rw /mnt/data || fail "Cannot write to the data partition."
+rw=1
+rm -rf $DL
+mkdir -p $DL
+# The archive into $TMP, going on where a broken download stopped. GitHub
+# sends it from a signed address that is valid for a few minutes: when a
+# try brings nothing, the address is asked again, and the download goes on
+# only when it is the same file (a release that came out meanwhile is
+# another one: then it starts again).
+resolve() {
+	curl -fsSIL --connect-timeout 20 --max-time 60 -o /dev/null -w '%{url_effective}' \
+		"$SRC/retoon-$BOARD.tar.gz"
+}
+fetch_archive() {
+	url=$(resolve) && [ -n "$url" ] || return 1
+	out=$TMP/image.tar.gz
+	rm -f $out
+	try=1 rate="" had=-1
+	while [ $try -le $TRIES ]; do
+		$FETCH $rate -C - -o $out "$url" && return 0
+		got=$(wc -c < $out 2>/dev/null || echo 0)
+		if [ "$got" -le "$had" ]; then
+			# nothing new: the address may have run out
+			new=$(resolve) && [ -n "$new" ] || return 1
+			[ "${new%%\?*}" = "${url%%\?*}" ] || { rm -f $out; got=0; }
+			url=$new
+		fi
+		had=$got
+		try=$((try + 1))
+		rate="--limit-rate $SLOW"
+		state working "Fetching ReToon $app (the connection broke at $((got / 1024)) kB, going on: try $try of $TRIES)"
+		sleep 3
+	done
+	return 1
+}
+
+if [ -n "$missing" ]; then
+	state working "Fetching ReToon $app"
+	room=$(df -k /tmp | tail -n 1 | awk '{print $4}')
+	if [ "$room" -gt $((NEED * 2 + 20000)) ]; then
+		fetch_archive || fail "Could not fetch ReToon $app. Try again."
+		state working "Unpacking ReToon $app"
+		gunzip -c $TMP/image.tar.gz | tar -xf - -C $DL || fail "The ReToon archive arrived damaged. Try again."
+		rm -f $TMP/image.tar.gz
+	else
+		$FETCH "$SRC/retoon-$BOARD.tar.gz" | gunzip -c | tar -xf - -C $DL ||
+			fail "Could not fetch ReToon $app. Try again."
+	fi
+	top=$(ls $DL | head -n 1)
+	[ -n "$top" ] && [ -d "$DL/$top" ] || fail "The ReToon archive arrived damaged. Try again."
+	for f in $missing; do
+		state working "Checking $f"
+		good "$DL/$top/$f" $f || fail "$f does not match the release (it may have just changed). Try again."
+	done
+fi
+
+state working "Putting the new version in place"
+# Toon 2: start-up files on the third partition first, then the system
+for f in $missing; do
+	case "$(home_of $f)" in $P3/*) need_p3=1 ;; esac
+done
+if [ -n "$need_p3" ]; then
+	mount -o remount,rw $P3 || fail "The third partition cannot be written."
+	for f in $missing; do
+		case "$(home_of $f)" in
+		$P3/*) cp $DL/$top/$f $P3/$f.new && sync && mv $P3/$f.new $P3/$f ||
+			fail "Cannot write $f to the third partition." ;;
+		esac
+	done
+fi
+for f in $missing; do
+	case "$(home_of $f)" in
+	$OS/*) mv $DL/$top/$f $OS/$f.new && mv $OS/$f.new $OS/$f || fail "Cannot write $f to the data partition." ;;
+	esac
+done
+sync
+
+if [ $BOARD = toon1 ]; then
+	if ! flash_has $KERNEL_MTD $OS/uImage-toon1-flash; then
+		state working "Writing the ReToon kernel"
+		flash_erase -q /dev/$KERNEL_MTD 0 0 && nandwrite -q -p /dev/$KERNEL_MTD $OS/uImage-toon1-flash &&
+			flash_has $KERNEL_MTD $OS/uImage-toon1-flash ||
+			fail "Writing the kernel failed. Do not restart the Toon: press Install again."
+	fi
+	# the next start comes back here once, whatever "Always start" says (a
+	# start that fails goes to the original software)
+	toon-boot retoon && : > /run/toon/boot-retoon-once
+elif mount -t vfat /dev/mmcblk3p1 $P1; then
+	# the next start comes back here once, whatever "Always start" says
+	cp $OS/boot.scr $P1/boot.new && sync && mv $P1/boot.new $P1/boot.scr && : > /run/toon/boot-retoon-once
+	sync
+fi
+state done "ReToon $app is in place. Restart to start it."

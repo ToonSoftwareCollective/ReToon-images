@@ -1,0 +1,238 @@
+From: ReToon
+Subject: [PATCH] backlight: add MP3309C driver for the Quby Toon 2
+
+The Toon 2 dims its MP3309C with a PWM on the EN/PWM pin while keeping the
+LED current limit in the I2C registers. The chip drops its registers when
+the pin is low for 20ms, so they have to be rewritten after the PWM starts.
+Derived from the mainline mp3309c driver, keeping the Toon's register setup.
+---
+diff -uN a/drivers/video/backlight/Kconfig b/drivers/video/backlight/Kconfig
+--- a/drivers/video/backlight/Kconfig	2026-10-10 14:58:37.523042000 +0000
++++ b/drivers/video/backlight/Kconfig	2026-10-10 14:58:37.561044255 +0000
+@@ -389,6 +389,15 @@
+ 	help
+ 	  This supports TI LM3639 Backlight + 1.5A Flash LED Driver
+ 
++config BACKLIGHT_MP3309C_TOON
++	tristate "MPS MP3309C backlight as wired on the Quby Toon 2"
++	depends on I2C && PWM
++	select REGMAP_I2C
++	help
++	  MP3309C white LED driver dimmed by a PWM on its EN/PWM pin, with
++	  the enable, LED current limit and working mode kept in its I2C
++	  registers the way the Toon 2 needs them.
++
+ config BACKLIGHT_LP855X
+ 	tristate "Backlight driver for TI LP855X"
+ 	depends on I2C && PWM
+diff -uN a/drivers/video/backlight/Makefile b/drivers/video/backlight/Makefile
+--- a/drivers/video/backlight/Makefile	2026-10-10 14:58:37.523042000 +0000
++++ b/drivers/video/backlight/Makefile	2026-10-10 14:58:37.561044255 +0000
+@@ -48,6 +48,7 @@
+ obj-$(CONFIG_BACKLIGHT_OMAP1)		+= omap1_bl.o
+ obj-$(CONFIG_BACKLIGHT_PANDORA)		+= pandora_bl.o
+ obj-$(CONFIG_BACKLIGHT_PCF50633)	+= pcf50633-backlight.o
++obj-$(CONFIG_BACKLIGHT_MP3309C_TOON)	+= mp3309c_toon.o
+ obj-$(CONFIG_BACKLIGHT_PWM)		+= pwm_bl.o
+ obj-$(CONFIG_BACKLIGHT_QCOM_WLED)	+= qcom-wled.o
+ obj-$(CONFIG_BACKLIGHT_RT4831)		+= rt4831-backlight.o
+diff -uN a/drivers/video/backlight/mp3309c_toon.c b/drivers/video/backlight/mp3309c_toon.c
+--- a/drivers/video/backlight/mp3309c_toon.c	1970-01-01 00:00:00.000000000 +0000
++++ b/drivers/video/backlight/mp3309c_toon.c	2026-10-10 14:58:37.561044255 +0000
+@@ -0,0 +1,196 @@
++// SPDX-License-Identifier: GPL-2.0-or-later
++/*
++ * MPS MP3309C white LED driver as wired on the Quby Toon 2: brightness is set
++ * by a PWM on the EN/PWM pin, while the I2C registers hold the chip enable,
++ * the LED current limit and the working mode.
++ *
++ * Derived from the mainline drivers/video/backlight/mp3309c.c
++ * (Copyright (C) 2023 ASEM Srl, Flavio Suligoi). Unlike mainline's PWM mode
++ * this keeps the Toon's register setup: DIMS clear, LED
++ * current capped by the D4..D0 field, PWM modulating on top of it.
++ */
++
++#include <linux/backlight.h>
++#include <linux/delay.h>
++#include <linux/i2c.h>
++#include <linux/module.h>
++#include <linux/of.h>
++#include <linux/pwm.h>
++#include <linux/regmap.h>
++
++#define REG_I2C_0		0x00
++#define REG_I2C_1		0x01
++
++#define REG_I2C_0_EN		0x80
++#define REG_I2C_0_RSRV2		0x01	/* set on the Toon 2 */
++
++#define REG_I2C_1_SYNC		0x20
++#define REG_I2C_1_OVP1		0x08
++
++#define MP3309C_MAX_BRIGHTNESS	100
++#define MP3309C_MAX_CURRENT	31
++
++struct mp3309c_chip {
++	struct regmap *regmap;
++	struct pwm_device *pwmd;
++	u32 current_level;
++	bool on;
++};
++
++static const struct regmap_config mp3309c_regmap = {
++	.name = "mp3309c_regmap",
++	.reg_bits = 8,
++	.reg_stride = 1,
++	.val_bits = 8,
++	.max_register = REG_I2C_1,
++};
++
++static int mp3309c_enable_device(struct mp3309c_chip *chip)
++{
++	unsigned int reg0 = REG_I2C_0_EN | REG_I2C_0_RSRV2;
++	int i, ret;
++
++	/*
++	 * The 5 bit LED current D4..D0 sits bit-reversed in register #0:
++	 *
++	 *     +--+--+--+--+--+--+--+--+
++	 *     |EN|D0|D1|D2|D3|D4|XX|XX|
++	 *     +--+--+--+--+--+--+--+--+
++	 */
++	for (i = 0; i < 5; i++)
++		reg0 |= ((chip->current_level >> i) & 0x01) << (6 - i);
++
++	ret = regmap_write(chip->regmap, REG_I2C_1,
++			   REG_I2C_1_SYNC | REG_I2C_1_OVP1);
++	if (ret)
++		return ret;
++
++	return regmap_write(chip->regmap, REG_I2C_0, reg0);
++}
++
++static int mp3309c_bl_update_status(struct backlight_device *bl)
++{
++	struct mp3309c_chip *chip = bl_get_data(bl);
++	int brightness = backlight_get_brightness(bl);
++	struct pwm_state pwmstate;
++	int ret;
++
++	pwm_get_state(chip->pwmd, &pwmstate);
++	pwm_set_relative_duty_cycle(&pwmstate, brightness,
++				    MP3309C_MAX_BRIGHTNESS);
++	pwmstate.enabled = brightness > 0;
++	ret = pwm_apply_state(chip->pwmd, &pwmstate);
++	if (ret)
++		return ret;
++
++	if (brightness == 0) {
++		chip->on = false;
++		return 0;
++	}
++
++	/*
++	 * After 20ms of low level on EN/PWM the chip turns off and forgets
++	 * its registers, so they are written again each time it comes back.
++	 * Wait about 10ms for the PWM signal to stabilize first.
++	 */
++	if (!chip->on) {
++		msleep(10);
++		ret = mp3309c_enable_device(chip);
++		if (ret)
++			return ret;
++		chip->on = true;
++	}
++
++	return 0;
++}
++
++static const struct backlight_ops mp3309c_bl_ops = {
++	.update_status = mp3309c_bl_update_status,
++};
++
++static int mp3309c_probe(struct i2c_client *client)
++{
++	struct device *dev = &client->dev;
++	struct backlight_properties props = { };
++	struct backlight_device *bl;
++	struct mp3309c_chip *chip;
++	struct pwm_state pwmstate;
++	u32 brightness = MP3309C_MAX_BRIGHTNESS;
++
++	chip = devm_kzalloc(dev, sizeof(*chip), GFP_KERNEL);
++	if (!chip)
++		return -ENOMEM;
++
++	chip->regmap = devm_regmap_init_i2c(client, &mp3309c_regmap);
++	if (IS_ERR(chip->regmap))
++		return dev_err_probe(dev, PTR_ERR(chip->regmap),
++				     "failed to allocate register map\n");
++
++	chip->pwmd = devm_pwm_get(dev, NULL);
++	if (IS_ERR(chip->pwmd))
++		return dev_err_probe(dev, PTR_ERR(chip->pwmd),
++				     "error getting pwm data\n");
++
++	chip->current_level = MP3309C_MAX_CURRENT;
++	of_property_read_u32(dev->of_node, "quby,led-current-level",
++			     &chip->current_level);
++	if (chip->current_level > MP3309C_MAX_CURRENT)
++		return -EINVAL;
++
++	of_property_read_u32(dev->of_node, "default-brightness", &brightness);
++	if (brightness > MP3309C_MAX_BRIGHTNESS)
++		return -EINVAL;
++
++	pwm_init_state(chip->pwmd, &pwmstate);
++	pwm_apply_state(chip->pwmd, &pwmstate);
++
++	props.brightness = brightness;
++	props.max_brightness = MP3309C_MAX_BRIGHTNESS;
++	props.scale = BACKLIGHT_SCALE_LINEAR;
++	props.type = BACKLIGHT_RAW;
++	props.power = FB_BLANK_UNBLANK;
++	bl = devm_backlight_device_register(dev, "mp3309c", dev, chip,
++					    &mp3309c_bl_ops, &props);
++	if (IS_ERR(bl))
++		return dev_err_probe(dev, PTR_ERR(bl),
++				     "error registering backlight device\n");
++
++	i2c_set_clientdata(client, bl);
++
++	return backlight_update_status(bl);
++}
++
++static void mp3309c_remove(struct i2c_client *client)
++{
++	struct backlight_device *bl = i2c_get_clientdata(client);
++
++	bl->props.power = FB_BLANK_POWERDOWN;
++	bl->props.brightness = 0;
++	backlight_update_status(bl);
++}
++
++static const struct of_device_id mp3309c_match_table[] = {
++	{ .compatible = "quby,toon2-mp3309c", },
++	{ },
++};
++MODULE_DEVICE_TABLE(of, mp3309c_match_table);
++
++static const struct i2c_device_id mp3309c_id[] = {
++	{ "toon2-mp3309c", 0 },
++	{ }
++};
++MODULE_DEVICE_TABLE(i2c, mp3309c_id);
++
++static struct i2c_driver mp3309c_i2c_driver = {
++	.driver	= {
++		.name = "mp3309c-toon",
++		.of_match_table = mp3309c_match_table,
++	},
++	.probe = mp3309c_probe,
++	.remove = mp3309c_remove,
++	.id_table = mp3309c_id,
++};
++module_i2c_driver(mp3309c_i2c_driver);
++
++MODULE_DESCRIPTION("MPS MP3309C backlight driver (Quby Toon 2 wiring)");
++MODULE_LICENSE("GPL");

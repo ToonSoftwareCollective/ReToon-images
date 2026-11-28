@@ -1,0 +1,31 @@
+#!/bin/sh
+# Your own scripts: every executable file in bootscripts/ on the data
+# partition runs in the background at every start (as root, after the
+# network), and is stopped at shutdown. A script that should keep running
+# loops by itself; one that exits is not started again.
+DIR=/mnt/data/toon-os/bootscripts
+RUN=/var/run/bootscripts
+
+case "$1" in
+  start)
+	[ -d $DIR ] || exit 0
+	mkdir -p $RUN
+	for f in $DIR/*; do
+		[ -f "$f" ] && [ -x "$f" ] || continue
+		n=$(basename "$f")
+		start-stop-daemon -S -q -b -m -p $RUN/$n.pid -x "$f" &&
+			logger -t bootscripts "started $n"
+	done
+	;;
+  stop)
+	for p in $RUN/*.pid; do
+		[ -f "$p" ] || continue
+		start-stop-daemon -K -q -p "$p"
+		rm -f "$p"
+	done
+	;;
+  restart)
+	$0 stop; sleep 1; $0 start
+	;;
+esac
+exit 0

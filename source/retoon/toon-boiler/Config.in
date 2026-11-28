@@ -1,0 +1,14 @@
+config BR2_PACKAGE_TOON_BOILER
+	bool "toon-boiler"
+	select BR2_PACKAGE_CJSON
+	select BR2_PACKAGE_TOON_BUS
+	select BR2_PACKAGE_OPENSSL
+	help
+	  toon-boilerd: talks to the Quby boiler module on UART1
+	  (4800 8E1). Switches the module between OpenTherm and the
+	  on/off contact and publishes what the module collects of the
+	  OpenTherm values as retoon/boiler (and retoon/opentherm) on
+	  the Toon's own MQTT broker. Also the thermostat: presets,
+	  week program, pre-heating and frost protection. Or, instead
+	  of the module, an ESP with an OpenTherm adapter running
+	  ESPHome, over its encrypted native API.

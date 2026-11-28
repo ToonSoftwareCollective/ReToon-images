@@ -1,0 +1,10 @@
+config BR2_PACKAGE_TOON_ESPHOME
+	bool "toon-esphome"
+	select BR2_PACKAGE_TOON_BUS
+	depends on BR2_PACKAGE_AVAHI_LIBAVAHI_CLIENT
+	depends on BR2_PACKAGE_BLUEZ5_UTILS
+	help
+	  toon-esphomed: the ReToon as an ESPHome device for Home
+	  Assistant (native API on TCP port 6053, found via mDNS) with a
+	  Bluetooth proxy: BLE advertisements received by the Toon 2's own
+	  radio are passed to Home Assistant's Bluetooth integrations.

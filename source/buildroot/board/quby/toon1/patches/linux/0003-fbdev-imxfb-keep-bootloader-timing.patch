@@ -1,0 +1,47 @@
+From: ReToon
+Subject: [PATCH] fbdev: imxfb: optionally keep the bootloader's panel timing
+
+Toon 1 units come with different 800x480 panels that need different
+margins and sync lengths. The bootloader sets the controller up for the
+panel that is fitted; with "fsl,keep-bootloader-timing" in the device
+tree the driver takes those values over instead of the ones in the
+device tree.
+---
+--- a/drivers/video/fbdev/imxfb.c
++++ b/drivers/video/fbdev/imxfb.c
+@@ -995,6 +995,35 @@
+ 		goto failed_init;
+ 	}
+ 
++	/*
++	 * Boards with more than one panel type: the bootloader has already
++	 * set the controller up for the panel that is fitted, so keep its
++	 * margins and sync lengths instead of the ones in the device tree.
++	 */
++	if (of_property_read_bool(pdev->dev.of_node, "fsl,keep-bootloader-timing") &&
++	    clk_prepare_enable(fbi->clk_ipg) == 0) {
++		u32 size = readl(fbi->regs + LCDC_SIZE);
++		u32 hcr = readl(fbi->regs + LCDC_HCR);
++		u32 vcr = readl(fbi->regs + LCDC_VCR);
++		struct fb_videomode *vm = &fbi->mode[0].mode;
++		u32 pcr = fbi->mode[0].pcr;
++		/* as in imxfb_activate_var */
++		u8 low = pcr & PCR_TFT ? 3 : pcr & PCR_COLOR ? 2 : 0;
++
++		clk_disable_unprepare(fbi->clk_ipg);
++		if (hcr && vcr && FIELD_GET(SIZE_XMAX_MASK, size) << 4 == vm->xres) {
++			vm->hsync_len = FIELD_GET(HCR_H_WIDTH_MASK, hcr) + 1;
++			vm->right_margin = FIELD_GET(HCR_H_WAIT_1_MASK, hcr) + 1;
++			vm->left_margin = FIELD_GET(HCR_H_WAIT_2_MASK, hcr) + low;
++			vm->vsync_len = FIELD_GET(VCR_V_WIDTH_MASK, vcr);
++			vm->lower_margin = FIELD_GET(VCR_V_WAIT_1_MASK, vcr);
++			vm->upper_margin = FIELD_GET(VCR_V_WAIT_2_MASK, vcr);
++			dev_info(&pdev->dev, "bootloader timing: h %u/%u/%u v %u/%u/%u\n",
++				 vm->left_margin, vm->right_margin, vm->hsync_len,
++				 vm->upper_margin, vm->lower_margin, vm->vsync_len);
++		}
++	}
++
+ 	fbi->map_size = PAGE_ALIGN(info->fix.smem_len);
+ 	info->screen_buffer = dma_alloc_wc(&pdev->dev, fbi->map_size,
+ 					   &fbi->map_dma, GFP_KERNEL);

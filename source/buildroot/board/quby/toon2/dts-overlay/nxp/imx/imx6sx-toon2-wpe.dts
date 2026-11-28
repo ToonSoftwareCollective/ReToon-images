@@ -1,0 +1,14 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+/*
+ * Toon 2 variant for the WPE WebKit test image: GPU driven by the open
+ * etnaviv driver instead of NXP's galcore.
+ */
+#include "imx6sx-toon2.dts"
+
+&gpu3d {
+	status = "disabled";
+};
+
+&gpu {
+	status = "okay";
+};

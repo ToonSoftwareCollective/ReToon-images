@@ -1,0 +1,39 @@
+#!/bin/sh
+# Hardware watchdog (i.MX WDOG1, kernel driver imx2_wdt). If the system
+# hangs -- for instance the A9 stalls on a bus access to a peripheral whose
+# clock is off, which froze a unit twice on 2026-10-23 -- the SoC resets
+# itself instead of staying dead until someone pulls the plug. The busybox
+# daemon pets the watchdog every 10 s; the hardware resets after 60 s without
+# a pet. Started first (S01) so the window without a pet is as short as
+# possible. Once started the i.MX watchdog cannot be switched off; if the
+# daemon ever exits, the kernel keeps it fed itself.
+#
+# Two watchdog devices exist: the ABX80X RTC chip registers one as well, and
+# it usually gets /dev/watchdog (= watchdog0), whose reset output goes
+# nowhere. So pick the i.MX WDOG1 by its device node (20bc000.watchdog).
+# Leave SRC_SCR mask_wdog_rst alone: the power-on value resets the SoC on a
+# time-out (verified on the bench 2026-10-23); writing the "unmask" value
+# 0101 from the i.MX6 manual is what stops the reset.
+find_wdog() {
+	for w in /sys/class/watchdog/watchdog*; do
+		case "$(readlink -f $w/device 2>/dev/null)" in
+		*20bc000.watchdog) echo /dev/$(basename $w); return 0 ;;
+		esac
+	done
+	return 1
+}
+
+case "$1" in
+  start)
+	dev=$(find_wdog) || { echo "toon-watchdog: i.MX WDOG1 not found"; exit 0; }
+	watchdog -T 60 -t 10 $dev && echo "toon-watchdog: 60 s hardware watchdog running on $dev"
+	;;
+  stop)
+	# leaves the watchdog running in the kernel (cannot be stopped anyway)
+	killall watchdog 2>/dev/null
+	;;
+  restart)
+	$0 stop; $0 start
+	;;
+esac
+exit 0

@@ -1,0 +1,20 @@
+config BR2_PACKAGE_TOON_UI
+	bool "toon-ui"
+	select BR2_PACKAGE_LVGL
+	select BR2_PACKAGE_CJSON
+	select BR2_PACKAGE_MOSQUITTO
+	select BR2_PACKAGE_TOON_BUS
+	select BR2_PACKAGE_OPENSSL
+	select BR2_PACKAGE_LIBOPENSSL_BIN if BR2_PACKAGE_LIBOPENSSL
+	select BR2_PACKAGE_LIGHTTPD		# the web interface (S51toon-web)
+	select BR2_PACKAGE_LIGHTTPD_OPENSSL
+	select BR2_PACKAGE_CA_CERTIFICATES
+	select BR2_PACKAGE_QUICKJS
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_LIBCURL_CURL	# toon-update
+	select BR2_PACKAGE_JPEG		# el.image (jpeg-turbo in the defconfigs)
+	help
+	  The Toon screen: dashboards described in Home Assistant's
+	  card format, drawn with LVGL, live over the Home Assistant
+	  websocket, plus the on-screen WiFi setup and the web
+	  interface for everything else.

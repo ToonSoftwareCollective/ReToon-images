@@ -1,0 +1,467 @@
+// SPDX-License-Identifier: GPL-2.0 OR MIT
+/*
+ * Board DTS for the Quby "Toon 2 NxT Display" (i.MX6 SoloX), written for
+ * ReToon from the hardware: no .dts source was ever published for this
+ * hardware generation. Touch (Solomon SSD2543) has its own driver (patch
+ * 0003).
+ */
+
+/dts-v1/;
+
+#include "imx6sx.dtsi"
+
+/ {
+	model = "Quby Toon 2 NxT Display";
+	compatible = "quby,nxt-display", "fsl,imx6sx";
+
+	chosen {
+		stdout-path = &uart4;
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x80000000 0x20000000>;
+	};
+
+	usdhc1_pwrseq: usdhc1_pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		/* GPIO4_IO5, active-low: the WiFi module's reset */
+		reset-gpios = <&gpio4 5 GPIO_ACTIVE_LOW>;
+	};
+
+	/* 5 V of the USB-A socket (GPIO2_IO9, active low) */
+	reg_usb_otg2_vbus: regulator-usb-otg2-vbus {
+		compatible = "regulator-fixed";
+		regulator-name = "usb_otg2_vbus";
+		regulator-min-microvolt = <5000000>;
+		regulator-max-microvolt = <5000000>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_usb_otg2_vbus>;
+		gpio = <&gpio2 9 GPIO_ACTIVE_LOW>;
+	};
+
+	reg_vref_3v3: regulator-vref-3v3 {
+		compatible = "regulator-fixed";
+		regulator-name = "vref-3v3";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+	};
+};
+
+/* the USB-A socket, as a host port */
+&usbotg2 {
+	vbus-supply = <&reg_usb_otg2_vbus>;
+	dr_mode = "host";
+	disable-over-current;
+	status = "okay";
+};
+
+&uart4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart4>;
+	status = "okay";
+};
+
+&usdhc1 {
+	pinctrl-names = "default", "state_100mhz", "state_200mhz";
+	pinctrl-0 = <&pinctrl_usdhc1>;
+	pinctrl-1 = <&pinctrl_usdhc1_100mhz>;
+	pinctrl-2 = <&pinctrl_usdhc1_200mhz>;
+	bus-width = <4>;
+	no-1-8-v;
+	non-removable;
+	cap-power-off-card;
+	pm-ignore-notify;
+	wifi-host;
+	mmc-pwrseq = <&usdhc1_pwrseq>;
+	status = "okay";
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+	brcmf: bcrmf@1 {
+		reg = <1>;
+		compatible = "brcm,bcm4329-fmac";
+		/* host-wake = GPIO4_IO4 (NAND_DATA00), level high. (IO2 gave a 30k irq/s storm.) */
+		interrupt-parent = <&gpio4>;
+		interrupts = <4 4>; /* IRQ_TYPE_LEVEL_HIGH */
+		interrupt-names = "host-wake";
+	};
+};
+
+/* eMMC on usdhc4 (0x0219c000), mmcblk3 in the original system. Needed so
+ * ReToon can see the eMMC (p1 to remove boot.scr, p3 for logs, p4 for its
+ * own files). Settings and pinmux as the board is wired. */
+&usdhc4 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_usdhc4>;
+	bus-width = <8>;
+	non-removable;
+	cap-mmc-highspeed;
+	mmc-ddr-1_8v;
+	max-frequency = <50000000>;
+	status = "okay";
+};
+
+/* i2c buses + sensors. hts221 has a mainline driver
+ * (st,hts221); ens210/ltr303 have no mainline driver yet so they bind nothing but
+ * are reachable via /dev/i2c-N (i2c-dev). PMIC(pfuze) omitted for now. */
+&i2c1 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c1>;
+	status = "okay";
+
+	rtc@69 {
+		compatible = "abracon,ab0805"; /* Ambiq AM0805, abx80x-compatible */
+		reg = <0x69>;
+	};
+};
+
+&i2c2 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	status = "okay";
+
+	/* LED current level 25/31 and a 1 ms PWM period, as the panel is driven on the Toon */
+	backlight: backlight@17 {
+		compatible = "quby,toon2-mp3309c";
+		reg = <0x17>;
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_pwm1>;
+		pwms = <&pwm1 0 1000000 0>;
+		default-brightness = <80>;
+		quby,led-current-level = <25>;
+	};
+
+	/* The controller's axes are swapped against the panel: its first
+	 * coordinate runs top to bottom (0..600), the second left to right. */
+	touchscreen@48 {
+		compatible = "quby,toon2-ssd2543";
+		reg = <0x48>;
+		interrupt-parent = <&gpio7>;
+		interrupts = <6 IRQ_TYPE_LEVEL_LOW>;
+		reset-gpios = <&gpio7 8 GPIO_ACTIVE_LOW>;
+		touchscreen-size-x = <600>;
+		touchscreen-size-y = <1024>;
+		touchscreen-swapped-x-y;
+	};
+};
+
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	status = "okay";
+
+	/* some Toon 2 versions have an HTS221 instead of an ENS210; both
+	 * are listed, the one not fitted does not bind */
+	ens210@43 { compatible = "ams,ens210"; reg = <0x43>; };
+	hts221@5f { compatible = "st,hts221"; reg = <0x5f>; };
+};
+
+&i2c4 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c4>;
+	status = "okay";
+
+	ltr303@29 { compatible = "liteon,ltr303"; reg = <0x29>; };
+	ens210@43 { compatible = "ams,ens210"; reg = <0x43>; };
+	hts221@5f { compatible = "st,hts221"; reg = <0x5f>; };
+};
+
+&uart1 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart1>;
+	status = "okay";
+};
+
+&uart2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart2>;
+	status = "okay";
+};
+
+&uart3 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_uart3>;
+	fsl,uart-has-rtscts;
+	status = "okay";
+
+	/* BT half of the BCM43430 combo; it answers HCI at 115200 without
+	 * any enable GPIO, so none is described. */
+	bluetooth {
+		compatible = "brcm,bcm43438-bt";
+	};
+};
+
+/* ADC1 (ultrasonic receiver) and ADC2 (VOC) belong to the Cortex-M4 (see the
+ * cm4 node): the firmware configures and calibrates them itself. */
+&adc1 {
+	vref-supply = <&reg_vref_3v3>;
+	status = "disabled";
+};
+
+/* CCS801 VOC sensor: sensed on ADC2 channel 0, driven by PWM5 (27.5 kHz, 18 %)
+ * with GPIO5_IO18 strobed low around each sample; the Cortex-M4 does this
+ * (toon-m4). */
+&adc2 {
+	vref-supply = <&reg_vref_3v3>;
+	status = "disabled";
+};
+
+/* PWM5 (VOC heater) is driven by the M4 as well; it muxes the pads itself. */
+&pwm5 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_voc>;
+	status = "disabled";
+};
+
+/* Display: mainline DRM path. LCDIF1 -> fsl-ldb bridge (gpr bridge@18) -> LVDS panel.
+ * Rocktech RK070FU13A 1024x600 timings. Backlight = MP3309 @ i2c2 0x17,
+ * dimmed by PWM1 on RGMII2_RD3 (see the backlight node under &i2c2; the chip forgets
+ * its i2c registers when that pin is low for 20 ms, so the driver rewrites them).
+ * LCD_EN/RESETn/STDBYn (gpio7 7/3/9) are left as U-Boot set them. The LDB input mux (GPR5) is forced to LCDIF1 by a fsl-ldb patch. */
+&lcdif1 {
+	/* Clocking: LVDS serial = pll2_pfd0 352 MHz,
+	 * ldb_di0 = 352/7 = 50.29 MHz, and LCDIF pixel clock taken FROM ldb_di0 so
+	 * pixel + LVDS clocks are locked together. */
+	assigned-clocks = <&clks IMX6SX_CLK_LDB_DI0_SEL>, <&clks IMX6SX_CLK_LCDIF1_SEL>;
+	assigned-clock-parents = <&clks IMX6SX_CLK_PLL2_PFD0>, <&clks IMX6SX_CLK_LDB_DI0>;
+	status = "okay";
+};
+&lcdif1_to_ldb { remote-endpoint = <&ldb_from_lcdif1>; };
+&lvds_bridge { status = "okay"; };
+&ldb_from_lcdif1 { remote-endpoint = <&lcdif1_to_ldb>; };
+&ldb_lvds_ch0 { remote-endpoint = <&panel_in>; };
+
+/ {
+	panel {
+		compatible = "panel-lvds";
+		backlight = <&backlight>;
+		width-mm = <154>;
+		height-mm = <86>;
+		data-mapping = "vesa-24";
+		panel-timing {
+			clock-frequency = <51200000>;
+			hactive = <1024>;
+			vactive = <600>;
+			hback-porch = <40>;
+			hfront-porch = <220>;
+			hsync-len = <60>;
+			vback-porch = <17>;
+			vfront-porch = <7>;
+			vsync-len = <10>;
+		};
+		port {
+			panel_in: endpoint {
+				remote-endpoint = <&ldb_lvds_ch0>;
+			};
+		};
+	};
+};
+
+&pwm1 {
+	status = "okay";
+};
+
+/* Buzzer on PWM4 (RGMII2_RD0): driven by the Cortex-M4 as a DAC for
+ * toon-sound (firmware 2.4, CTRL_SND_EN), so Linux leaves PWM4 alone. The
+ * M4 sets the pad itself; pinctrl_pwm4 below documents it. */
+&pwm4 {
+	status = "disabled";
+};
+
+&iomuxc {
+	imx6sx-toon2 {
+		pinctrl_voc: vocgrp {
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_TD3__PWM5_OUT		0x110f1
+				MX6SX_PAD_RGMII2_TD0__GPIO5_IO_18	0x17059
+			>;
+		};
+
+		pinctrl_pwm4: pwm4grp {
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_RD0__PWM4_OUT		0x13058
+			>;
+		};
+
+		pinctrl_pwm1: pwm1grp {
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_RD3__PWM1_OUT		0x11050
+			>;
+		};
+
+		pinctrl_usb_otg2_vbus: usbotg2vbusgrp {
+			fsl,pins = <
+				MX6SX_PAD_ENET2_TX_CLK__GPIO2_IO_9	0x13059
+			>;
+		};
+
+		pinctrl_uart4: uart4grp {
+			fsl,pins = <
+				MX6SX_PAD_SD2_DATA1__UART4_DCE_TX	0x1b0b1
+				MX6SX_PAD_SD2_DATA0__UART4_DCE_RX	0x1b0b1
+			>;
+		};
+
+		pinctrl_usdhc1: usdhc1grp {
+			fsl,pins = <
+				MX6SX_PAD_SD1_CMD__USDHC1_CMD		0x17058
+				MX6SX_PAD_SD1_CLK__USDHC1_CLK		0x10058
+				MX6SX_PAD_SD1_DATA0__USDHC1_DATA0	0x17058
+				MX6SX_PAD_SD1_DATA1__USDHC1_DATA1	0x17058
+				MX6SX_PAD_SD1_DATA2__USDHC1_DATA2	0x17058
+				MX6SX_PAD_SD1_DATA3__USDHC1_DATA3	0x17058
+				MX6SX_PAD_NAND_DATA00__GPIO4_IO_4	0x13058
+				MX6SX_PAD_NAND_DATA01__GPIO4_IO_5	0x17058
+				MX6SX_PAD_NAND_CE1_B__GPIO4_IO_2	0x17058
+				MX6SX_PAD_CSI_MCLK__ANATOP_32K_OUT	0x10058
+			>;
+		};
+
+		pinctrl_usdhc1_100mhz: usdhc1grp-100mhz {
+			fsl,pins = <
+				MX6SX_PAD_SD1_CMD__USDHC1_CMD		0x17098
+				MX6SX_PAD_SD1_CLK__USDHC1_CLK		0x10098
+				MX6SX_PAD_SD1_DATA0__USDHC1_DATA0	0x17098
+				MX6SX_PAD_SD1_DATA1__USDHC1_DATA1	0x17098
+				MX6SX_PAD_SD1_DATA2__USDHC1_DATA2	0x17098
+				MX6SX_PAD_SD1_DATA3__USDHC1_DATA3	0x17098
+			>;
+		};
+
+		pinctrl_usdhc1_200mhz: usdhc1grp-200mhz {
+			fsl,pins = <
+				MX6SX_PAD_SD1_CMD__USDHC1_CMD		0x170d9
+				MX6SX_PAD_SD1_CLK__USDHC1_CLK		0x100d9
+				MX6SX_PAD_SD1_DATA0__USDHC1_DATA0	0x170d9
+				MX6SX_PAD_SD1_DATA1__USDHC1_DATA1	0x170d9
+				MX6SX_PAD_SD1_DATA2__USDHC1_DATA2	0x170d9
+				MX6SX_PAD_SD1_DATA3__USDHC1_DATA3	0x170d9
+			>;
+		};
+
+			/* eMMC 8-bit on usdhc4: raw tuples <mux conf input mux_mode input_val config> */
+			pinctrl_usdhc4: usdhc4grp {
+				fsl,pins = <
+					0x27c 0x5c4 0x000 0x0 0x0 0x17018
+					0x278 0x5c0 0x000 0x0 0x0 0x10018
+					0x280 0x5c8 0x000 0x0 0x0 0x17018
+					0x284 0x5cc 0x000 0x0 0x0 0x17018
+					0x288 0x5d0 0x000 0x0 0x0 0x17018
+					0x28c 0x5d4 0x000 0x0 0x0 0x17018
+					0x290 0x5d8 0x000 0x0 0x0 0x17018
+					0x294 0x5dc 0x000 0x0 0x0 0x17018
+					0x298 0x5e0 0x000 0x0 0x0 0x17018
+					0x29c 0x5e4 0x000 0x0 0x0 0x17018
+					0x2a0 0x5e8 0x000 0x0 0x0 0x10018
+				>;
+			};
+
+			pinctrl_i2c1: i2c1grp {
+				fsl,pins = <
+					0x18 0x360 0x7ac 0x0 0x1 0x4001b889
+					0x14 0x35c 0x7a8 0x0 0x1 0x4001b889
+				>;
+			};
+
+			pinctrl_i2c2: i2c2grp {
+				fsl,pins = <
+					0x20 0x368 0x7b4 0x0 0x1 0x4001b889
+					0x1c 0x364 0x7b0 0x0 0x1 0x4001b889
+					/* touch irq (GPIO7_IO6) and reset (GPIO7_IO8) */
+					0x268 0x5b0 0x000 0x5 0x0 0x10859
+					0x270 0x5b8 0x000 0x5 0x0 0x10859
+				>;
+			};
+
+			pinctrl_i2c3: i2c3grp {
+				fsl,pins = <
+					0xc8 0x410 0x7bc 0x2 0x2 0x4001b889
+					0xb4 0x3fc 0x7b8 0x2 0x2 0x4001b889
+				>;
+			};
+
+			pinctrl_i2c4: i2c4grp {
+				fsl,pins = <
+					0x68 0x3b0 0x7c4 0x2 0x2 0x4001b889
+					0x64 0x3ac 0x7c0 0x2 0x2 0x4001b889
+				>;
+			};
+
+			pinctrl_uart1: uart1grp { /* boiler, edge_uart */
+				fsl,pins = <
+					0x24 0x36c 0x000 0x0 0x0 0x1b098
+					0x28 0x370 0x830 0x0 0x1 0x1b098
+				>;
+			};
+
+			pinctrl_uart2: uart2grp { /* Z-Wave, zwave_uart */
+				fsl,pins = <
+					0x2c 0x374 0x000 0x0 0x0 0x1b098
+					0x30 0x378 0x838 0x0 0x1 0x1b098
+				>;
+			};
+
+			pinctrl_uart3: uart3grp { /* Bluetooth, wifi-bt_uart (rtscts) */
+				fsl,pins = <
+					0x1b4 0x4fc 0x840 0x1 0x4 0x1b098
+					0x1b8 0x500 0x000 0x1 0x0 0x1b098
+					0x1a0 0x4e8 0x000 0x1 0x0 0x1b098
+					0x1a4 0x4ec 0x83c 0x1 0x5 0x1b098
+				>;
+			};
+	};
+};
+
+/* Cortex-M4 sensor co-processor (package toon-m4): the kernel's remoteproc
+ * loads /lib/firmware/toon2-m4.elf into the TCM and holds the M4 clock chain
+ * (pll3_pfd3 -> m4), which nothing else keeps alive. Started by S45toon-m4,
+ * not at boot (no fsl,auto-boot). The firmware runs the ultrasonic approach
+ * detector (PWM2 40 kHz on RGMII2_RD2, enable on GPIO5_IO16/17, receiver on
+ * ADC1 ch0) and the VOC sampling (see &pwm5). */
+/ {
+	cm4: imx6sx-cm4 {
+		compatible = "fsl,imx6sx-cm4";
+		clocks = <&clks IMX6SX_CLK_M4>;
+		syscon = <&src>;
+	};
+};
+
+/* PWM2 (ultrasonic transmit): driven by the M4, which muxes the pad itself and
+ * gates the transmit by switching it between PWM2_OUT and GPIO. */
+&pwm2 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_us>;
+	status = "disabled";
+};
+
+&iomuxc {
+	imx6sx-toon2 {
+		pinctrl_us: usgrp {
+			fsl,pins = <
+				MX6SX_PAD_RGMII2_RD2__PWM2_OUT		0x11058
+				MX6SX_PAD_RGMII2_RX_CTL__GPIO5_IO_16	0x17059
+				MX6SX_PAD_RGMII2_RXC__GPIO5_IO_17	0x17059
+			>;
+		};
+	};
+};
+
+/* imx_rproc reaches the SRC (M4 reset/enable bits) through a syscon regmap;
+ * mainline's i.MX6SX src node is not declared as one. */
+&src {
+	compatible = "fsl,imx6sx-src", "fsl,imx51-src", "syscon";
+};
+
+/* GPU for the open etnaviv driver; the gpu3d node is NXP's galcore binding */
+&gpu3d {
+	status = "disabled";
+};
+
+&gpu {
+	status = "okay";
+};

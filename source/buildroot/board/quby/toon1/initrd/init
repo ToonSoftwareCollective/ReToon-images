@@ -1,0 +1,115 @@
+#!/bin/sh
+# Toon 1 boot manager (built into the ReToon kernel in the "kernel"
+# partition): mount the original UBIFS, find the root image in
+# mnt/data/toon-os and switch to it. U-Boot has already set the next start
+# to the original system (see toon-boot), so if that is not possible this
+# restarts after 5 seconds and the original system comes up, from where
+# toon-os can be repaired over SSH. A file toon-os/rescue in /mnt/data (or
+# toon.rescue on the kernel command line) stays here instead, with a login on
+# the serial console.
+IMAGE=toon-os/rootfs.squashfs
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+
+# The start-up picture at once (the kernel blanked U-Boot's when it took the
+# screen): U-Boot's own picture from the splash-image partition when it is
+# ReToon's (toon-bootsplash; toon-splash shows only a BMP it made itself),
+# else nothing here. Before the slow UBI attach. U-Boot has already set the
+# next start to the original system, so a problem here cannot loop.
+if [ -x /bin/toon-splash ] && [ -e /dev/fb0 ]; then
+	while read -r dev size erase name; do
+		[ "$name" = '"splash-image"' ] && splash=/dev/${dev%:}
+	done < /proc/mtd
+	if [ -n "$splash" ]; then
+		[ -e /sys/class/vtconsole/vtcon1/bind ] && echo 0 > /sys/class/vtconsole/vtcon1/bind
+		/bin/toon-splash --still "$splash"
+	fi
+fi
+
+# toon.image=<path in /mnt/data> on the kernel command line selects another image
+for arg in $(cat /proc/cmdline); do
+	case "$arg" in toon.image=*) IMAGE=${arg#toon.image=} ;; esac
+done
+exec 0</dev/console 1>/dev/console 2>&1
+stay=
+grep -qw toon.rescue /proc/cmdline && stay=1
+
+# to the kernel log (so also on the console, and in dmesg afterwards)
+say() {
+	echo "toon boot manager: $*" > /dev/kmsg 2>/dev/null || echo "toon boot manager: $*"
+}
+
+rescue() {
+	say "$1"
+	echo toon-rescue > /etc/hostname
+	hostname toon-rescue
+	mkdir -p /var/run /var/log /tmp
+	if [ -z "$stay" ]; then
+		say "restarting into the original system in 5 seconds"
+		sleep 5
+		reboot -f
+	fi
+	exec /sbin/init
+}
+
+# Attach the original UBI on the "rootfs" partition. Not with ubi.mtd= on the
+# kernel command line: the kernel then puts the VID header where it thinks
+# it belongs (512 on this NAND), and some Toon 1s were formatted with it at
+# 2048 ("bad VID header offset 2048, expected 512"). The offset is taken from
+# the partition's own EC header (the first good erase block that has one).
+ubi_offset() {	# mtd number, erase block size: the VID header offset or nothing
+	b=0
+	while [ $b -lt 32 ]; do
+		h=$(dd if=/dev/mtd$1 bs=64 skip=$((b * $2 / 64)) count=1 2>/dev/null |
+			hexdump -v -e '24/1 "%02x"')
+		case "$h" in
+		55424923*) echo $((0x$(echo "$h" | cut -c33-40))); return ;;
+		esac
+		b=$((b + 1))
+	done
+}
+ubi_attach() {
+	set -- $(grep '"rootfs"$' /proc/mtd)
+	[ -n "$1" ] || return 1
+	mtd=${1%:}; mtd=${mtd#mtd}
+	off=$(ubi_offset $mtd $((0x$3)))
+	say "UBI on mtd$mtd, VID header at ${off:-the kernel's choice}"
+	if [ -n "$off" ]; then
+		err=$(ubiattach -m $mtd -O $off /dev/ubi_ctrl 2>&1) && return
+		say "$err"
+	fi
+	err=$(ubiattach -m $mtd /dev/ubi_ctrl 2>&1) && return
+	say "$err"
+	return 1
+}
+# UBIFS copes with power cuts, so it is mounted read-write: settings live here.
+mkdir -p /mnt/ubi /mnt/data /mnt/ro /mnt/rw /mnt/root
+i=0
+while [ ! -e /dev/ubi_ctrl ] && [ $i -lt 25 ]; do sleep 0.2; i=$((i + 1)); done
+[ -e /dev/ubi0_0 ] || ubi_attach || rescue "cannot attach the original UBI"
+mount -t ubifs ubi0:rootfs /mnt/ubi || rescue "cannot mount the original UBIFS"
+# same place as on the Toon 2: the original software's own data folder
+mkdir -p /mnt/ubi/mnt/data
+mount -o bind /mnt/ubi/mnt/data /mnt/data || rescue "cannot bind mnt/data"
+[ -e /mnt/data/toon-os/rescue ] && stay=1
+[ -n "$stay" ] && rescue "rescue requested"
+[ -f /mnt/data/$IMAGE ] || rescue "no $IMAGE in /mnt/data"
+mount -t squashfs -o loop,ro /mnt/data/$IMAGE /mnt/ro || rescue "cannot mount the root image"
+
+# writable layer in RAM on top of the read-only image
+mount -t tmpfs -o size=24m tmpfs /mnt/rw
+mkdir -p /mnt/rw/upper /mnt/rw/work
+mount -t overlay overlay -o lowerdir=/mnt/ro,upperdir=/mnt/rw/upper,workdir=/mnt/rw/work /mnt/root \
+	|| rescue "cannot set up the overlay"
+
+mkdir -p /mnt/root/mnt/ubi /mnt/root/mnt/data /mnt/root/mnt/ro
+mount -o move /mnt/ubi /mnt/root/mnt/ubi
+mount -o bind /mnt/root/mnt/ubi/mnt/data /mnt/root/mnt/data
+umount /mnt/data
+mount -o move /mnt/ro /mnt/root/mnt/ro
+mount -o move /proc /mnt/root/proc
+mount -o move /sys /mnt/root/sys
+mount -o move /dev /mnt/root/dev
+exec switch_root /mnt/root /sbin/init

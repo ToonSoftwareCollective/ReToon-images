@@ -1,0 +1,120 @@
+#!/bin/sh
+# Updating by itself: config/update.conf "auto=" says when ReToon looks for
+# an update (hourly, nightly around 3:00, weekly on Sunday night; off or no
+# file: never). An update that is found is installed (toon-update) and the
+# Toon restarts, after a 30-second countdown on the screen. After that start, the screen shows a banner that it updated
+# itself (the version is noted on the data partition before the restart).
+# With config/apps-autoupdate there too, the installed apps are updated at the
+# same moments (toon-apps update) when ReToon itself has no update: the
+# screen restarts to load them and then says which ones.
+DIR=/mnt/data/toon-os/config
+CONF=$DIR/update.conf
+MARK=$DIR/auto-updated
+APPS_AUTO=$DIR/apps-autoupdate
+STATE=/run/toon/update
+# the screen (toon-ui) takes messages on retoon/notify/set and keeps
+# retoon/ui while it runs
+screen_up() { toon-bus get ui >/dev/null 2>&1; }
+say() { toon-bus send retoon/notify/set "$1" >/dev/null 2>&1; }
+RESTART_S=30	# the countdown before the restart
+LAST=/run/toon/update.auto	# when it last looked (seconds), and on which day
+
+val() { sed -n "s/^$1=//p" "$2" 2>/dev/null | tail -n 1; }
+rw() { mount -o remount,rw /mnt/data; }
+ro() { sync; [ -d /run/toon/update.lock ] || mount -o remount,ro /mnt/data 2>/dev/null; }
+
+# the banner after an update by itself, once the screen is there
+announce() {
+	v=$(cat $MARK 2>/dev/null)
+	for i in $(seq 1 60); do screen_up && break; sleep 5; done
+	sleep 10	# the screen has just started: let it settle
+	if [ "$(val lang $DIR/language)" = en ]; then
+		t="ReToon updated itself"; m="Now version $v. It installed the update and restarted by itself."
+	else
+		t="ReToon heeft zichzelf bijgewerkt"; m="Nu versie $v. De update is vanzelf geïnstalleerd en de ReToon is herstart."
+	fi
+	say "$(printf '{"title":"%s","message":"%s","style":"banner","timeout":0,"icon":"mdi:update","tag":"auto-update","wake":false}' \
+		"$t" "$m")"
+	logger -t toon-autoupdate "updated itself to $v; banner shown"
+	rw && rm -f $MARK
+	ro
+}
+
+# the apps: update them, restart the screen, and say which ones
+apps_update() {
+	out=/tmp/toon-autoupdate.apps
+	/usr/bin/toon-apps update > $out 2>/dev/null
+	if [ -s $out ]; then
+		list=$(awk '{ n = $4; for (i = 5; i <= NF; i++) n = n " " $i
+			printf "%s%s %s", (NR > 1 ? ", " : ""), n, $3 }' $out)
+		logger -t toon-autoupdate "apps updated: $list"
+		/etc/init.d/S50toon-ui restart >/dev/null 2>&1 </dev/null
+		for i in $(seq 1 30); do screen_up && break; sleep 2; done
+		sleep 10	# the screen has just started: let it settle
+		if [ "$(val lang $DIR/language)" = en ]; then
+			t="Apps updated"; m="Updated by themselves: $list."
+		else
+			t="Apps bijgewerkt"; m="Vanzelf bijgewerkt: $list."
+		fi
+		say "$(printf '{"title":"%s","message":"%s","style":"banner","timeout":0,"icon":"mdi:puzzle","tag":"apps-update","wake":false}' \
+			"$t" "$(echo "$m" | sed 's/["\\]//g')")"
+	fi
+	rm -f $out
+}
+
+# a popup that counts down to the restart; it lights a dimmed screen by day,
+# not at night (the nightly look is at 3:00)
+warn() {
+	wake=true
+	case $(date +%H) in 0[0-6]) wake=false ;; esac
+	if [ "$(val lang $DIR/language)" = en ]; then
+		t="ReToon restarts in {s} s"; m="Version $1 is installed and is used after the restart."
+	else
+		t="ReToon herstart over {s} s"; m="Versie $1 is geïnstalleerd en wordt na de herstart gebruikt."
+	fi
+	say "$(printf '{"title":"%s","message":"%s","style":"popup","timeout":%d,"icon":"mdi:restart","tag":"auto-update","wake":%s}' \
+		"$t" "$m" $RESTART_S $wake)"
+	sleep $RESTART_S
+}
+
+# is it time to look, by the setting and what was done last
+due() {
+	now=$(date +%s); hour=$(date +%H); day=$(date +%Y%m%d); wday=$(date +%w)
+	[ "$(date +%Y)" -ge 2024 ] || return 1	# no clock yet (NTP)
+	last=$(cut -d' ' -f1 $LAST 2>/dev/null); lastday=$(cut -d' ' -f2 $LAST 2>/dev/null)
+	case "$1" in
+	hourly) [ $((now - ${last:-0})) -ge 3600 ] ;;
+	nightly) [ "$hour" = 03 ] && [ "$lastday" != "$day" ] ;;
+	weekly) [ "$wday" = 0 ] && [ "$hour" = 03 ] && [ "$lastday" != "$day" ] ;;
+	*) return 1 ;;
+	esac
+}
+
+[ -s $MARK ] && announce &
+
+# not straight after a start: an update that keeps failing must not
+# keep the Toon busy, and the network needs a moment
+sleep 600
+echo "$(date +%s) -" > $LAST	# the night's look is still to come
+while :; do
+	mode=$(val auto $CONF)
+	if due "$mode" && [ ! -d /run/toon/update.lock ]; then
+		echo "$(date +%s) $(date +%Y%m%d)" > $LAST
+		/usr/bin/toon-update check >/dev/null 2>&1
+		if grep -q '"state":"available"' $STATE 2>/dev/null; then
+			/usr/bin/toon-update install >/dev/null 2>&1
+			if grep -q '"state":"done"' $STATE 2>/dev/null; then
+				v=$(sed -n 's/.*"app":"\([^"]*\)".*/\1/p' $STATE)
+				rw && echo "$v" > $MARK
+				ro
+				logger -t toon-autoupdate "installed $v, restarting in $RESTART_S s"
+				warn "$v"
+				sync
+				reboot
+				exit 0
+			fi
+		fi
+		[ -e $APPS_AUTO ] && apps_update
+	fi
+	sleep 60
+done

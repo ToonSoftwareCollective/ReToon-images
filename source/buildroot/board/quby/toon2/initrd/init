@@ -1,0 +1,148 @@
+#!/bin/sh
+# Toon 2 initrd: find the root image on p4 and switch to it. If that is not
+# possible, stay here and bring up WiFi + SSH so the unit can still be reached.
+IMAGE=toon-os/rootfs.squashfs
+
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev 2>/dev/null
+
+# toon.image=<path on p4> on the kernel command line selects another root image
+for arg in $(cat /proc/cmdline); do
+	case "$arg" in toon.image=*) IMAGE=${arg#toon.image=} ;; esac
+done
+exec 0</dev/console 1>/dev/console 2>&1
+
+# boot.scr is one-shot: remove it first, so a broken image can never make the
+# unit loop here. The next boot then goes to the original software.
+mkdir -p /mnt/boot
+if mount -t vfat /dev/mmcblk3p1 /mnt/boot 2>/dev/null; then
+	rm -f /mnt/boot/boot.scr
+	sync
+	# the start-up picture at once: the kernel blanked U-Boot's when it
+	# took the screen; from U-Boot's own picture when it is ReToon's
+	# (toon-bootsplash), else worked out. The splash at S00 goes on from
+	# it. After boot.scr is gone, so whatever happens here, the next start
+	# goes to the original software.
+	if [ -e /dev/fb0 ] && [ -x /usr/bin/toon-splash ]; then
+		[ -e /sys/class/vtconsole/vtcon1/bind ] && echo 0 > /sys/class/vtconsole/vtcon1/bind
+		/usr/bin/toon-splash --still /mnt/boot/splash-custom.bmp
+	fi
+	sync
+	umount /mnt/boot
+fi
+
+CONFIG=/mnt/data/toon-os/config
+FIRMWARE=/mnt/data/toon-os/firmware
+BT_SKIP=/tmp/bt-no-restart	# no Bluetooth restart to wait for (see the end)
+BT_N0=0
+
+# The firmware of the WiFi and Bluetooth chip is in no image: it sits on p4,
+# copied there by the installer from the Toon's original software. The WiFi
+# driver asked for it before p4 was there and gave up, so tell the kernel
+# where to look and let the driver try again. The path stays right after the
+# switch to the root image, where p4 is at /mnt/data too.
+# WiFi settings copied from the oldest original software (Broadcom's own
+# driver) have boardflags3 bit 27 set: "force external 32 kHz sleep clock".
+# With ReToon's driver the chip then never starts its clock (HT Avail
+# timeout) and there is no WiFi. Newer original software sets bit 26, "force
+# internal 32 kHz sleep clock": do the same. The installer does this too since
+# app 1.0.18; this is for Toons set up with an older one. p4 is only written
+# when the file needs it, so once.
+wifi_sleep_clock() {
+	t=$FIRMWARE/brcm/brcmfmac43430-sdio.txt
+	v=$(sed -n 's/^boardflags3=//p' $t 2>/dev/null | tr -d '\r' | head -n 1)
+	case "$v" in 0x*|0X*) ;; *) return ;; esac
+	[ $((v & 0x08000000)) -ne 0 ] || return
+	n=$(printf '0x%08X' $(( (v & ~0x08000000) | 0x04000000 )))
+	mount -o remount,rw /mnt/data || { echo "toon initrd: WiFi settings need boardflags3 $n, but p4 cannot be written"; return; }
+	sed "s/^boardflags3=.*/boardflags3=$n/" $t > $t.new && mv $t.new $t &&
+		echo "toon initrd: WiFi settings: boardflags3 $v -> $n (internal 32 kHz sleep clock)"
+	sync
+	mount -o remount,ro /mnt/data
+}
+
+radio_firmware() {
+	[ -d $FIRMWARE/brcm ] || { echo "toon initrd: no radio firmware on p4 ($FIRMWARE/brcm)"; : > $BT_SKIP; return; }
+	wifi_sleep_clock
+	echo -n $FIRMWARE > /sys/module/firmware_class/parameters/path
+	# Bluetooth: started without its patch file; start it again. In the
+	# background: the bind returns only when the patch is through the UART,
+	# about 2.5 s that held up the whole start, and Bluetooth is only needed
+	# by bluetoothd (S40). The patch file itself is read from p4 at the start
+	# of that; the end waits for that (BT_N0), not for the upload.
+	BT_N0=$(dmesg | grep -c 'hci0: BCM.*Patch')
+	ls -d /sys/bus/serial/drivers/hci_uart_bcm/serial* > /dev/null 2>&1 || : > $BT_SKIP
+	(
+		for d in /sys/bus/serial/drivers/hci_uart_bcm/serial*; do
+			[ -e "$d" ] || continue
+			echo "${d##*/}" > /sys/bus/serial/drivers/hci_uart_bcm/unbind 2>/dev/null
+			echo "${d##*/}" > /sys/bus/serial/drivers/hci_uart_bcm/bind 2>/dev/null
+		done
+	) &
+	[ -e /sys/class/net/wlan0 ] && return
+	for d in /sys/bus/sdio/devices/*; do
+		[ -e "$d/driver" ] && echo "${d##*/}" > /sys/bus/sdio/drivers/brcmfmac/unbind 2>/dev/null
+	done
+	for d in /sys/bus/sdio/devices/*; do
+		[ -e "$d" ] && echo "${d##*/}" > /sys/bus/sdio/drivers/brcmfmac/bind 2>/dev/null
+	done
+}
+
+rescue() {
+	echo "toon initrd: $1 -- staying in the rescue environment"
+	echo "Toon rescue mode: $1" > /dev/tty0 2>/dev/null
+	echo toon-rescue > /etc/hostname
+	hostname toon-rescue
+	mkdir -p /var/run /var/log /tmp /etc/dropbear
+	# WiFi credentials are not in this image; they live on p4
+	# the driver has only just been given its firmware
+	i=0
+	while [ ! -e /sys/class/net/wlan0 ] && [ $i -lt 40 ]; do sleep 0.25; i=$((i + 1)); done
+	if [ -f $CONFIG/wpa_supplicant.conf ]; then
+		wpa_supplicant -B -i wlan0 -c $CONFIG/wpa_supplicant.conf -D nl80211,wext
+		udhcpc -i wlan0 -b -x hostname:toon-rescue
+	else
+		echo "toon initrd: no WiFi configuration on p4: to be chosen on the screen"
+	fi
+	dropbear -R
+	# The screen: what is wrong, how to get in, and WiFi setup when the
+	# network is gone (toon-wifi does that by hand here, see /etc/toon-rescue).
+	: > /etc/toon-rescue
+	if [ -e /dev/fb0 ] && [ -x /usr/bin/toon-ui ]; then
+		[ -e /sys/class/vtconsole/vtcon1/bind ] && echo 0 > /sys/class/vtconsole/vtcon1/bind
+		/usr/bin/toon-ui --rescue "$2" > /dev/null 2>&1 &
+	fi
+	exec /sbin/init
+}
+
+mkdir -p /mnt/data /mnt/ro /mnt/rw /mnt/root
+i=0
+while [ ! -b /dev/mmcblk3p4 ] && [ $i -lt 20 ]; do sleep 0.2; i=$((i + 1)); done
+mount -t ext4 -o ro /dev/mmcblk3p4 /mnt/data || rescue "cannot mount p4" "the data partition cannot be read"
+radio_firmware
+grep -qw toon.rescue /proc/cmdline && rescue "requested on the kernel command line" "rescue mode was asked for"
+[ -f /mnt/data/$IMAGE ] || rescue "no $IMAGE on p4" "the system image is missing"
+mount -t squashfs -o loop,ro /mnt/data/$IMAGE /mnt/ro || rescue "cannot mount the root image" "the system image is damaged"
+
+# writable layer in RAM on top of the read-only image
+mount -t tmpfs -o size=64m tmpfs /mnt/rw
+mkdir -p /mnt/rw/upper /mnt/rw/work
+mount -t overlay overlay -o lowerdir=/mnt/ro,upperdir=/mnt/rw/upper,workdir=/mnt/rw/work /mnt/root \
+	|| rescue "cannot set up the overlay" "the system could not be set up"
+
+mkdir -p /mnt/root/mnt/data /mnt/root/mnt/ro
+# Bluetooth (radio_firmware) reads its patch file from /mnt/data: wait until
+# it did (a new "hci0: BCM ... Patch" line, also "Patch file not found")
+# before /mnt/data moves; the upload to the chip goes on by itself
+i=0
+while [ ! -e $BT_SKIP ] && [ $i -lt 40 ] && [ "$(dmesg | grep -c 'hci0: BCM.*Patch')" -le "$BT_N0" ]; do
+	sleep 0.05
+	i=$((i + 1))
+done
+mount -o move /mnt/data /mnt/root/mnt/data
+mount -o move /mnt/ro /mnt/root/mnt/ro
+mount -o move /proc /mnt/root/proc
+mount -o move /sys /mnt/root/sys
+mount -o move /dev /mnt/root/dev
+exec switch_root /mnt/root /sbin/init

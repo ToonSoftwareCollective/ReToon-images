@@ -1,0 +1,9 @@
+#!/bin/sh
+# Set the clock as soon as there is a network. ntpd (S49ntpd) starts before
+# WiFi is up, finds no server and only tries again after a while, so the
+# screen showed --:-- for up to a minute. When the RTC chip had no valid time
+# at boot (see S49ntpd) the year is still wrong here: then ask once.
+[ "$1" = bound ] || exit 0
+[ "$(date +%Y)" -ge 2025 ] && exit 0
+(/usr/sbin/ntpd -n -q -p pool.ntp.org >/dev/null 2>&1 &)
+exit 0
