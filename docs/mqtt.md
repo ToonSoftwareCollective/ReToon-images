@@ -45,7 +45,7 @@ an old `time` there means that program stopped. Commands:
 
 | Topic | Payload |
 |---|---|
-| `retoon/boiler/set` | `hvac heat`, `hvac off`, `target 20.5`, `preset comfort` (`home`, `sleep`, `away`), `program resume`, `mode ot`, `mode onoff`, `max_flow 45` (a fixed maximum water temperature, 20–80 °C; `max_flow 0` the boiler's own again), `hot_water 60` (a fixed hot water temperature, 30–80 °C; the hot water week program goes off) |
+| `retoon/boiler/set` | `hvac heat`, `hvac off`, `target 20.5`, `preset comfort` (`home`, `sleep`, `away`), `program resume`, `mode ot`, `mode onoff`, `max_flow 45` (a fixed maximum water temperature, 20–80 °C; `max_flow 0` the boiler's own again), `hot_water 60` (a fixed hot water temperature, 30–80 °C; the hot water week program goes off), `hot_water_keep_warm on` / `off` (keep the tap water warm) |
 | `retoon/display/set` | `ON`, `OFF` or a brightness 0–100 |
 | `retoon/notify/set` | a message on the screen, as below |
 | `retoon/ui/set` | `view 2` (show page 2, counted from 0) or `wake` |
@@ -92,7 +92,7 @@ discovery_prefix=homeassistant
 | Climate | "Thermostat": off / heat / auto (auto follows the week program, heat holds the temperature: the same as the calendar button on the screen), target 6–30 °C in 0.5 steps, presets, current temperature, heating / idle |
 | Select | "Connection": OpenTherm, On/off; "Thermostat sensor": which of the sensors chosen in the web interface the thermostat works with: `Average` (all of them, as chosen), `Toon` (its own) or one of them by entity id (only when sensors other than the Toon's own are chosen); "Page": the page on the screen, by its name (a page without a name, or with the name of an earlier page, as "Page 2" / "Pagina 2"); choosing one shows it and wakes the screen, for example a page with a camera when the doorbell rings |
 | Number | "Maximum flow temperature" (OpenTherm): the maximum in force now (yours, else the installation's own); setting it makes it a fixed maximum (20–80 °C), the same as Fixed on the Installation page. For a heating curve of your own in Home Assistant, by the outside temperature. It is saved with the settings when it changes, so set it now and then (every quarter of an hour, say), not every few seconds |; "Hot water temperature" (OpenTherm, a boiler with hot water): what the Toon asks for now, else the boiler's own setting; setting it makes it a fixed temperature (30–80 °C, within the boiler's limits) and switches the hot water week program off, the same as setting the temperature on the Thermostat tab without the program. For a hot water temperature by the outside temperature, for example. The boiler keeps it in memory that wears out, so change it a few times a day at most. Through an ESP (OpenTherm over WiFi) from its configuration version 2
-| Switch | "Thermostat lock": on keeps what is in force now, also over the week program's steps (the red border on the screen), off follows the week program again |
+| Switch | "Thermostat lock": on keeps what is in force now, also over the week program's steps (the red border on the screen), off follows the week program again; "Keep hot water warm" (OpenTherm, a boiler with hot water): off asks the boiler not to keep its tap water at temperature (the same as on the Thermostat tab, Hot water; with some boilers off means no hot water at all) |
 | Light | "Display": backlight on/off and brightness |
 | Notify | "Notification": a message on the Toon's screen, see below |
 | Event | "Notification button": a tap on such a message |
