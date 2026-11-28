@@ -24,9 +24,8 @@ Six tabs:
   ReToon" are set.
 - **Screen**, in three parts: *Pages* (the pages, below, and copying pages
   from Home Assistant), *Brightness* (brightness, dimming and the screen off
-  at night) and *Other* (going back to the home page, sliding the pages, the
-  buttons under the thermostat, touch calibration, trying a notification
-  and the standard pages).
+  at night) and *Other* (going back to the home page, sliding the pages,
+  touch calibration, trying a notification and the standard pages).
 - **Thermostat**: see [thermostat.md](thermostat.md).
 - **Connections**: Home Assistant, MQTT with your own MQTT values and the Toon's own broker, Z-Wave,
   Bluetooth proxy, Zigbee or Thread, WiFi. Each card shows its state first;
@@ -92,7 +91,9 @@ With "Option buttons" (a select entity), "Heating mode buttons" or "Preset
 buttons" as the extra control, the form lists what the entity can be set to:
 tick the ones that get a button (at most 5) and put them in order with the
 arrows. Nothing ticked: all of them, in the entity's order. A large
-thermostat dial has the same choice under "Buttons under the dial".
+thermostat dial and the classic style have the same choice under "Buttons
+under the thermostat" (with "None" for no buttons; for ReToon's own
+thermostat the week program button comes with them).
 
 For a cover (curtains, blinds) there are "Position slider" and "Open / stop /
 close buttons". "Colour when on" gives a tile its own background colour

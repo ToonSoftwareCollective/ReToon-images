@@ -76,12 +76,13 @@ on or off (blue when on; the same setting as "Week program" in the web
 interface). Without a boiler module the card says so top right ("External
 device" when it heats and cools for one, see [thermostat.md](thermostat.md)).
 
-Setting the temperature only by hand or from Home Assistant: switch off
-"Presets and week program under the thermostat" (web interface, Screen,
-Pages). The card then shows only the dial and the − and + buttons, and the
-week program goes off. The presets still exist in Home Assistant and the
-web interface; switching the row back on brings the buttons back (the week
-program stays off until you switch it on).
+Setting the temperature only by hand or from Home Assistant: choose "None"
+under "Buttons under the thermostat" in the card (page editor). The card
+then shows only the temperature and the − and + buttons, without the
+presets and the week program button; the week program itself keeps running
+if it is on (switch it off under Thermostat, Week program). This is a choice
+per card, also for the classic style. The presets still exist in Home
+Assistant and the web interface.
 
 For a page with several thermostats the card has smaller styles (`style`
 in the card, "Style" in the editor):
