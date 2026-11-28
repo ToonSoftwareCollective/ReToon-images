@@ -2,7 +2,8 @@
 OBJS = main.o util.o i18n.o ha.o local.o dash.o wifi.o mqtt.o rescue.o apps.o touchcal.o notify.o graph.o bus.o energy.o gif.o
 CFLAGS += -Wall -Wextra -Wno-unused-parameter -D_GNU_SOURCE -DLV_CONF_INCLUDE_SIMPLE
 
-all: toon-ui toon-ha toon-splash toon-splash-static toon-api
+# STATIC=toon-splash-static: also the static splash (the Toon 1 boot manager)
+all: toon-ui toon-ha toon-splash toon-api $(STATIC)
 
 toon-api: toon-api.c
 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< -ltoonbus -lmosquitto -lpthread

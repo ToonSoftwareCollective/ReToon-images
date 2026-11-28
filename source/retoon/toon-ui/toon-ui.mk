@@ -23,7 +23,7 @@ define TOON_UI_BUILD_CMDS
 		CFLAGS="$(TOON_UI_CFLAGS)" \
 		LDFLAGS="$(TARGET_LDFLAGS)" \
 		QJS_LIB="$(STAGING_DIR)/usr/lib/quickjs/libquickjs.a" \
-		EXTRA_LIBS="$(TOON_UI_EXTRA_LIBS)"
+		EXTRA_LIBS="$(TOON_UI_EXTRA_LIBS)" $(TOON_UI_MAKE_OPTS)
 endef
 
 define TOON_UI_INSTALL_TARGET_CMDS
@@ -77,10 +77,14 @@ define TOON_UI_INSTALL_INIT_SYSV
 	done
 endef
 
-# the static toon-splash for the Toon 1 boot manager (board/quby/toon1/mkinitrd.sh)
+# the static toon-splash for the Toon 1 boot manager (board/quby/toon1/mkinitrd.sh);
+# only the Toon 1 (ARM926) has one
+ifeq ($(BR2_arm926t),y)
+TOON_UI_MAKE_OPTS += STATIC=toon-splash-static
 TOON_UI_INSTALL_IMAGES = YES
 define TOON_UI_INSTALL_IMAGES_CMDS
 	$(INSTALL) -D -m 0755 $(@D)/toon-splash-static $(BINARIES_DIR)/toon-splash-static
 endef
+endif
 
 $(eval $(generic-package))

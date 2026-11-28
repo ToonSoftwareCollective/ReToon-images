@@ -134,6 +134,31 @@ uses your archive instead of downloading the latest release.
 itself" installs the newest official release when it finds one, and that
 replaces your own image. Set it to off while you run your own build.
 
+## Updating to a newer version
+
+```sh
+cd ~/ReToon-images && git pull
+cd source
+./buildroot/setup-buildroot.sh ~/retoon-toon2
+```
+
+`setup-buildroot.sh` makes the ReToon files in the tree the same as here,
+also removing files that are gone; your firmware file and version name stay.
+Then build everything again: Buildroot does not remove what a package
+installed once, even when it is no longer used, so start from a clean
+output (the downloads in `dl/` are kept, so this goes faster than the first
+time):
+
+```sh
+cd ~/retoon-toon2
+echo my-2 > board/quby/toon2/rootfs-overlay/etc/retoon-version
+make clean
+make quby_toon2_defconfig
+make
+```
+
+The same for a Toon 1 in its own tree. Then pack and install as above.
+
 ## Changing things
 
 The ReToon programs are in `retoon/<program>/src`; the web interface is in
